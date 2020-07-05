@@ -78,6 +78,8 @@ action drop() {
 control egress {
 }
 
+// Init block omitted
+
 reaction my_reaction() {
   static bool flip = true;
   if (flip) {

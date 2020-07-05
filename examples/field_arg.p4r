@@ -1,4 +1,4 @@
-// An example showing the usage of field argument
+// A simple example showing the usage of field argument in reaction
 
 #include <tofino/intrinsic_metadata.p4>
 #include <tofino/constants.p4>

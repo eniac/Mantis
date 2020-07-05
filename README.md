@@ -32,7 +32,7 @@ The frontend generated C file is later forwarded to C preprocessor to render the
 Later Mantis will generate and load the shared object and link it to the run time agent.
 
 `compile_p4r.sh` wraps the usage of frontend.
-For example, to compile `examples/table_add_del_mod.p4r` to the current directory:
+For example, to compile `examples/table_add_del_mod.p4r` to the tofino sde tree:
 
 ```
 sudo ./compile_p4r.sh examples/table_add_del_mod.p4r ./table_add_del_mod

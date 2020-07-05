@@ -97,6 +97,7 @@ vector<UnanchoredNode *> compileCCode(std::vector<AstNode*> nodeArray, char * ou
 
     ostringstream oss_preprocessor;
     ostringstream oss_mbl_init;
+    ostringstream oss_init_end;
     ostringstream oss_reaction_mirror;
     ostringstream oss_reaction_update;
 
@@ -104,6 +105,8 @@ vector<UnanchoredNode *> compileCCode(std::vector<AstNode*> nodeArray, char * ou
 
     generateMacroNonMblTable(nodeArray, oss_preprocessor, prefix_str);
  
+    generatePrologueEnd(nodeArray, oss_init_end, ing_iso_opt);
+
     generateMacroInitMbls(nodeArray, oss_mbl_init, oss_reaction_mirror, oss_preprocessor, num_init_vars, ing_iso_opt, prefix_str);
 
     generateMacroXorVersionBits(oss_reaction_mirror, oss_preprocessor, ing_iso_opt);
@@ -115,12 +118,12 @@ vector<UnanchoredNode *> compileCCode(std::vector<AstNode*> nodeArray, char * ou
     mirrorRegisterArgForIng(nodeArray, oss_reaction_mirror, ing_iso_opt, prefix_str, true);
     mirrorRegisterArgForIng(nodeArray, oss_reaction_mirror, egr_iso_opt, prefix_str, false);
 
-    generateMacroMblTable(nodeArray, oss_preprocessor, prefix_str, ing_iso_opt);
+    generateMacroMblTable(nodeArray, oss_preprocessor, prefix_str, ing_iso_opt, oss_reaction_mirror);
 
-    generateDialogueEnd(oss_reaction_update, ing_iso_opt, egr_iso_opt);
+    generateDialogueEnd(nodeArray, oss_reaction_update, ing_iso_opt, egr_iso_opt);
 
     ret_vec.push_back(generateMacroNode(oss_preprocessor));
-    ret_vec.push_back(generatePrologueNode(nodeArray, oss_mbl_init));
+    ret_vec.push_back(generatePrologueNode(nodeArray, oss_mbl_init, oss_init_end));
     ret_vec.push_back(generateDialogueNode(nodeArray, oss_reaction_mirror, oss_reaction_update));    
 
 	return ret_vec;

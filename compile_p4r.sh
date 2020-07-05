@@ -8,6 +8,9 @@ if [ $# -ne 2 ]
     exit
 fi
 
+set -e
+set -euxo pipefail
+
 output_path=$(dirname $2)
 
 output_c_fn=$2"_mantis.c"
@@ -15,12 +18,13 @@ output_p4_fn=$2"_mantis.p4"
 output_include_fn=$2"_mantis.include"
 
 echo "==============Synthesize .p4 and .c files=============="
-make clean && make -j4 &&
-./frontend -i $1 -o $2 || exit
+make clean
+make -j4
+./frontend -i $1 -o $2
 
 echo "==============Run preprocesser and install the agent implementation=============="
 echo "#include \"pd.h\"" >> ${output_include_fn} && cat ${output_include_fn} > ${output_path}"/p4r.c" && gcc -E ${output_c_fn} | sed 's/_MANTIS_NL_\s*;/_MANTIS_NL_/g' | sed 's/_MANTIS_NL_/\n /g' | grep "^[^#]" >> ${output_path}"/p4r.c"
-rm ${output_include_fn}
+rm ${output_include_fn} ${output_c_fn}
 
 echo "==============compile output p4 to tofino target with p4c=============="
 # Use custom p4_14 compilation script, omitted for public repo

@@ -21,6 +21,8 @@
 #include "../../include/ast_nodes_p4r.h"
 #include "../../include/helper.h"
 
+#include "compile_const.h"
+
 
 bool typeContains(AstNode* n, const char* type) {
     if (n->nodeType_.find(string(type)) != string::npos) {
@@ -42,7 +44,8 @@ P4ExprNode* findIngress(const std::vector<AstNode*>& astNodes) {
     for (auto node : astNodes) {
         if (typeContains(node, "P4ExprNode")) {
             P4ExprNode* exprNode = dynamic_cast<P4ExprNode*>(node);
-            if (exprNode->name1_->toString().find("ingress") != string::npos) {
+            // Might be called after ing transformation
+            if (exprNode->name1_->toString().find("ingress") != string::npos || exprNode->name1_->toString().find(string(kOrigIngControlName)) != string::npos) {
                 return exprNode;
             }
         }
@@ -55,7 +58,7 @@ P4ExprNode* findEgress(const std::vector<AstNode*>& astNodes) {
     for (auto node : astNodes) {
         if (typeContains(node, "P4ExprNode")) {
             P4ExprNode* exprNode = dynamic_cast<P4ExprNode*>(node);
-            if (exprNode->name1_->toString().find("egress") != string::npos) {
+            if (exprNode->name1_->toString().find("egress") != string::npos || exprNode->name1_->toString().find(string(kOrigEgrControlName)) != string::npos) {
                 return exprNode;
             }
         }
@@ -384,7 +387,7 @@ bool findRegargInIng(ReactionArgNode* regarg, std::vector<AstNode*> nodeArray) {
     P4ExprNode* ing_node = findIngress(nodeArray);
     P4ExprNode* egr_node = findEgress(nodeArray);
     if(ing_node==NULL || egr_node==NULL) {
-        PANIC("Missing ing/egr node\n");
+        PANIC("Missing ing/egr node for %s\n", regarg->toString().c_str());
     }
     if(ing_node->body_->toString().find(table_name) != string::npos) {
         return true;

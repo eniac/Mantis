@@ -1,0 +1,268 @@
+// A simple failover detector that monitors dataplane timestamp and heartbeat packet counts
+
+#include <tofino/intrinsic_metadata.p4>
+#include <tofino/constants.p4>
+#include <tofino/primitives.p4>
+#include <tofino/stateful_alu_blackbox.p4>
+
+header_type ethernet_t {
+  fields {
+    dstAddr : 48;
+    srcAddr : 48;
+    etherType : 16;
+  }
+}
+
+header_type ipv4_t {
+  fields {
+    version : 4;
+    ihl : 4;
+    diffserv : 8;
+    totalLen : 16;
+    identification : 16;
+    flags : 3;
+    fragOffset : 13;
+    ttl : 8;
+    protocol : 8;
+    hdrChecksum : 16;
+    srcAddr : 32;
+    dstAddr : 32;
+  }
+}
+
+header_type udp_t {
+  fields {
+    srcPort : 16;
+    dstPort : 16;
+    hdr_length : 16;
+    checksum : 16;
+  }
+}
+
+header ethernet_t ethernet;
+header ipv4_t ipv4;
+header udp_t udp;
+
+#define UDP_TYPE 17
+
+parser start {
+  return parse_ethernet;
+}
+
+parser parse_ethernet {
+  extract(ethernet);
+  return select(latest.etherType) {
+    0x800 : parse_ipv4;
+  }
+}
+
+parser parse_ipv4 {
+  extract(ipv4);
+  return select(latest.fragOffset, latest.protocol) {
+    UDP_TYPE : parse_udp;
+    default: ingress;
+  }
+}
+
+parser parse_udp {
+  extract(udp);
+  return ingress;
+}
+
+field_list ipv4_field_list {                                                         
+  ipv4.version;
+  ipv4.ihl;
+  ipv4.diffserv;
+  ipv4.totalLen;
+  ipv4.identification;
+  ipv4.flags;
+  ipv4.fragOffset;
+  ipv4.ttl;
+  ipv4.protocol;
+  ipv4.srcAddr;
+  ipv4.dstAddr;
+}
+
+field_list_calculation ipv4_chksum_calc {
+  input {
+    ipv4_field_list;
+  }
+  algorithm : csum16;
+  output_width: 16;
+}
+
+calculated_field ipv4.hdrChecksum {
+  update ipv4_chksum_calc;
+}
+
+field_list udp_checksum_list {
+  udp.srcPort;
+  udp.dstPort;
+  udp.hdr_length;
+  payload;
+}
+
+field_list_calculation udp_checksum_calc {
+  input {
+    udp_checksum_list;
+  }
+  algorithm : csum16;
+  output_width : 16;
+}
+
+calculated_field udp.checksum {
+  update udp_checksum_calc;
+}
+
+action ai_nop() {
+}
+
+action ai_set_egr_port(egress_port) {
+  add_to_field(ipv4.ttl, -1);
+  modify_field(ig_intr_md_for_tm.ucast_egress_port, egress_port);
+}
+
+action ai_drop_ipv4() {
+  drop();
+}
+
+table ti_ipv4_forwarding {
+  reads {
+    ipv4.dstAddr : ternary;
+    ipv4.srcAddr : ternary;
+  }
+  actions {
+    ai_nop;
+    ai_set_egr_port;
+  }
+  size : 1024;
+}
+
+control ingress {
+  apply(ti_ipv4_forwarding);
+  apply(ti_inc_pkt_counter);
+  apply(ti_record_ingress_tstamp);  
+}
+
+register ri_ingress_tstamp {
+  width : 32;
+  instance_count : 1;
+}
+
+blackbox stateful_alu bi_record_ingress_tstamp {
+  reg : ri_ingress_tstamp;
+
+  update_lo_1_value : ig_intr_md.ingress_mac_tstamp;
+}
+
+action ai_record_ingress_tstamp(){
+  bi_record_ingress_tstamp.execute_stateful_alu(0);
+}
+
+table ti_record_ingress_tstamp {
+  actions {ai_record_ingress_tstamp;}
+  default_action: ai_record_ingress_tstamp();
+}
+
+register ri_pkt_counter {
+  width : 32;
+  // 16, 32, 64, 128
+  instance_count : 128;
+}
+
+blackbox stateful_alu bi_inc_pkt_counter{
+  reg : ri_pkt_counter;
+
+  update_lo_1_value : register_lo + 1;
+}
+
+action ai_inc_pkt_counter(){
+  // w.l.o.g., if using
+  // bi_inc_pkt_counter.execute_stateful_alu(ig_intr_md.ingress_port);
+  // one needs to map the array indices to neighbor device IDs in the reaction
+  bi_inc_pkt_counter.execute_stateful_alu(0);
+}
+
+table ti_inc_pkt_counter {
+  actions {ai_inc_pkt_counter;}
+  default_action: ai_inc_pkt_counter();
+}
+
+control egress {
+}
+
+init_block my_init {
+  ti_ipv4_forwarding_add_ai_set_egr_port(0, 0xa01010d, 0xffffffff, 0xa010102, 0x0, 2, 0x9a);
+  ti_ipv4_forwarding_add_ai_set_egr_port(1, 0xa010103, 0xffffffff, 0xa010102, 0x0, 2, 0x9b);
+  ti_ipv4_forwarding_add_ai_set_egr_port(2, 0xa010102, 0xffffffff, 0xa010103, 0x0, 2, 0x90);
+}
+
+reaction my_reaction(reg ri_pkt_counter, reg ri_ingress_tstamp[0:1]){
+  // For benchmarks only
+  #include <sys/time.h>
+  #include <stdio.h>
+
+  // range: 16,32,64,128
+  #define NUM_PORTS 128
+  #define ETA 0.2
+
+  int num_ports = NUM_PORTS;
+
+  static int consecutive_k = 2;
+  int i = 0;
+  int j = 0;
+
+  static int initialized=0;
+
+  static uint32_t prev_tstamp=0;
+
+  static uint32_t prev_pkt_ctrs[NUM_PORTS];
+  static bool is_failure[NUM_PORTS];
+  static int num_failed_confirm[NUM_PORTS];
+  if(initialized==0) {
+    for(i = 0; i<num_ports; i++) {
+      is_failure[i] = true;
+      prev_pkt_ctrs[i]=0;
+      num_failed_confirm[i]=0;
+      initialized=1;
+    }
+  }
+
+  static struct timeval tp;
+  static long curr_ts;
+
+  unsigned int delta = 0;
+
+  if(ri_ingress_tstamp[0]<prev_tstamp) {
+    // Because we only get 32b out of 48b original nano timer
+    delta = (unsigned int)(ETA*(4294967295-prev_tstamp+ri_ingress_tstamp[0])/1000);
+  } else if (ri_ingress_tstamp[0]>prev_tstamp) {
+    delta = (unsigned int)(ETA*(ri_ingress_tstamp[0]-prev_tstamp)/1000);
+  } else {
+    delta = 10000000; // No packet comming in, considered failed so a large delta
+  }
+
+  prev_tstamp = ri_ingress_tstamp[0];
+
+  for(i=0; i<num_ports; i++) {
+    if(ri_pkt_counter[i]>prev_pkt_ctrs[i] && ri_pkt_counter[i]-prev_pkt_ctrs[i]>=delta) {
+      is_failure[i] = false;
+      num_failed_confirm[i] = 0;
+    }
+    else {
+      if(!is_failure[i]) {
+        num_failed_confirm[i] += 1;
+        if(num_failed_confirm[i]>=consecutive_k) {      
+          // Reroute if the connectivity failure is detected to the stable link, artibrary logic is allowed
+          is_failure[i] = true;
+          ti_ipv4_forwarding_mod_ai_set_egr_port(1, 0x9a);
+
+          gettimeofday(&tp, NULL);
+          curr_ts = tp.tv_sec*1000000 + tp.tv_usec;
+          printf ( "[%d] %d<%d reroute: %lu \n" , i , ri_pkt_counter[i]-prev_pkt_ctrs[i], delta, curr_ts ) ;
+        }
+      }
+    }
+    prev_pkt_ctrs[i] = ri_pkt_counter[i];  
+  }
+}

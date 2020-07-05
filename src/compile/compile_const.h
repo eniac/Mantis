@@ -54,7 +54,8 @@ const char* const kErrorCheckStr = "if(__mantis__status_tmp!=0) {return false;}_
 
 static int kHandlerOffset = 2;
 static int kInitEntryHandlerIndex = 0;
-static int kMaxHandlerIndex = 5000;
+// Consistent with the agent malloc size of user_hdls
+static int kNumUserHdls = 5000;
 
 // %1%: reg width
 // %2%: data plane reg name
@@ -147,14 +148,14 @@ R"(
 
 const char * const kPrologueT = 
 R"(
-bool pd_prologue(uint32_t sess_hdl, dev_target_t pipe_mgr_dev_tgt, uint32_t* handlers) {
+bool pd_prologue(uint32_t sess_hdl, dev_target_t pipe_mgr_dev_tgt, uint32_t* user_hdls, uint32_t* vv_shallow_hdls) {
   uint32_t __mantis__status_tmp;
 
 %1%
 
 %2%
 
-  __mantis__add_vars;
+%3%
 
   return true;
 }
@@ -162,7 +163,7 @@ bool pd_prologue(uint32_t sess_hdl, dev_target_t pipe_mgr_dev_tgt, uint32_t* han
 
 const char * const kDialogueT = 
 R"(
-bool pd_dialogue(uint32_t sess_hdl, dev_target_t pipe_mgr_dev_tgt, uint32_t* handlers) {
+bool pd_dialogue(uint32_t sess_hdl, dev_target_t pipe_mgr_dev_tgt, uint32_t* user_hdls, uint32_t* vv_shallow_hdls) {
   uint32_t __mantis__status_tmp;
 
 %1%

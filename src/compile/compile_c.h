@@ -21,7 +21,7 @@
 
 void extractReactionMacro(std::vector<AstNode*> nodeArray, ostringstream& oss_preprocessor, string out_fn_base);
 
-UnanchoredNode* generatePrologueNode(std::vector<AstNode*> nodeArray, ostringstream& oss_variable_init);
+UnanchoredNode* generatePrologueNode(std::vector<AstNode*> nodeArray, ostringstream& oss_variable_init, ostringstream& oss_init_end);
 
 UnanchoredNode* generateDialogueNode(std::vector<AstNode*> nodeArray, ostringstream& oss_reaction_start, ostringstream& oss_reaction_end);
 
@@ -39,11 +39,13 @@ void generateDialogueArgStart(ostringstream& oss_reaction_start, int isolation_o
 
 void generateMacroNonMblTable(std::vector<AstNode*> nodeArray, ostringstream& oss_preprocessor, string prefix_str);
 
-void generateMacroMblTable(std::vector<AstNode*> nodeArray, ostringstream& oss_preprocessor, string prefix_str, int iso_opt);
+void generateMacroMblTable(std::vector<AstNode*> nodeArray, ostringstream& oss_preprocessor, string prefix_str, int iso_opt, ostringstream& oss_reaction_mirror);
 
 void generateMacroInitMbls(std::vector<AstNode*> nodeArray, ostringstream& oss_variable_init, ostringstream& oss_reaction_start, 
                              ostringstream& oss_preprocessor, int num_vars, int iso_opt, string prefix_str);
 
-void generateDialogueEnd(ostringstream& oss_reaction_end, int ing_iso_opt, int egr_iso_opt);
+void generatePrologueEnd(std::vector<AstNode*> nodeArray, ostringstream& oss_init_end, int ing_iso_opt);
+
+void generateDialogueEnd(std::vector<AstNode*> nodeArray, ostringstream& oss_reaction_end, int ing_iso_opt, int egr_iso_opt);
 
 #endif
