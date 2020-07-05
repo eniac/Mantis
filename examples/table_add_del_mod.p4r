@@ -1,0 +1,141 @@
+// A simple example showing the syntax of add/delete/modify table manipulations
+
+#include <tofino/intrinsic_metadata.p4>
+#include <tofino/constants.p4>
+#include <tofino/stateful_alu_blackbox.p4>
+#include <tofino/primitives.p4>
+
+/*================================
+=      header      =
+================================*/
+header_type ethernet_t {
+  fields {
+    dstAddr :48;
+    srcAddr : 48;
+    etherType : 16;
+  }
+}
+
+header_type ipv4_t {
+  fields {
+    version : 4;
+    ihl : 4;
+    diffserv : 8;
+    totalLen : 16;
+    identification : 16;
+    flags : 3;
+    fragOffset : 13;
+    ttl : 8;
+    protocol : 8;
+    hdrChecksum : 16;
+    srcAddr : 32;
+    dstAddr : 32;
+  }
+}
+
+header_type udp_t {
+  fields {
+    srcPort : 16;
+    dstPort : 16;
+    hdr_length : 16;
+    checksum : 16;
+  }
+}
+
+header ethernet_t ethernet;
+header ipv4_t ipv4;
+header udp_t udp;
+
+/*================================
+=      parser       =
+================================*/
+
+#define UDP_TYPE 17
+
+parser start {
+  return parse_ethernet;
+}
+
+parser parse_ethernet {
+  extract(ethernet);
+  return select(latest.etherType) {
+    0x800 : parse_ipv4;
+  }
+}
+
+parser parse_ipv4 {
+  extract(ipv4);
+  return select(latest.fragOffset, latest.protocol) {
+    UDP_TYPE : parse_udp;
+    default: ingress;
+  }
+}
+
+parser parse_udp {
+  extract(udp);
+  return ingress;
+}
+
+/*================================
+=      ingress      =
+================================*/
+action ai_nop() {
+}
+
+action ai_set_egr_port(egress_port) {
+  modify_field(ig_intr_md_for_tm.ucast_egress_port, egress_port);
+}
+
+action ai_drop_ipv4() {
+  drop();
+}
+
+table ti_ipv4_forwarding {
+  reads {
+    ipv4.dstAddr : ternary;
+    ipv4.srcAddr : ternary;
+  }
+  actions {
+    ai_nop;
+    ai_set_egr_port;
+  }
+  size : 1024;
+}
+
+control ingress {
+  apply(ti_ipv4_forwarding);
+}
+
+/*================================
+=      egress      =
+================================*/
+control egress {
+}
+
+/*================================
+=   init block and reaction   =
+================================*/
+init_block global_init {
+  // add a simple entry with index 0 and corresponding match arguments, priority (since ternary) and action arguments
+  ti_ipv4_forwarding_add_ai_set_egr_port(0, 0xa01010d, 0xffffffff, 0xa010102, 0x0, 0x1, 0x90);
+  // modify the entry 0 with another priority and action arguments
+  ti_ipv4_forwarding_mod_ai_set_egr_port(0, 0x90);
+  // delete entry 0
+  ti_ipv4_forwarding_del(0);
+
+  // add new entry 1
+  ti_ipv4_forwarding_add_ai_set_egr_port(1, 0xa01010e, 0xffffffff, 0xa010102, 0x0, 0x1, 0x90);
+} 
+
+reaction my_reaction() {
+  static bool flip = true;
+  if (flip) {
+    ti_ipv4_forwarding_mod_ai_set_egr_port(1, 0x89);
+    flip = false;
+  } else {
+    ti_ipv4_forwarding_mod_ai_set_egr_port(1, 0x90);
+    flip = true;
+  }
+}
+
+/*=====  End of P4R code  ======*/
