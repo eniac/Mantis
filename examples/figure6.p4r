@@ -1,0 +1,50 @@
+// A simple example in Figure 6 of the paper
+
+#include <tofino/intrinsic_metadata.p4>
+#include <tofino/constants.p4>
+#include <tofino/stateful_alu_blackbox.p4>
+#include <tofino/primitives.p4>
+
+header_type my_header_t {
+  fields {
+    foo : 32;
+    bar : 32;
+    baz : 32;
+    qux : 32;
+  }
+}
+header my_header_t hdr;
+
+parser start {
+  return parse_header;
+}
+parser parse_header {
+  extract(hdr);
+  return ingress;
+}
+
+control ingress {
+  apply(my_table);
+}
+
+control egress {
+}
+
+action drop() {
+}
+
+// P4R code
+malleable field read_var {
+  width : 32;
+  init : hdr.foo;
+  alts { hdr.foo, hdr.bar }
+}
+
+table my_table {
+  reads { ${read_var} : exact; }
+  actions { my_action; drop; }
+}
+
+action my_action() {
+  add(hdr.qux, hdr.baz, ${read_var});
+}

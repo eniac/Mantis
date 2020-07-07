@@ -27,7 +27,7 @@ echo "#include \"pd.h\"" >> ${output_include_fn} && cat ${output_include_fn} > $
 rm ${output_include_fn} ${output_c_fn}
 
 echo "==============compile output p4 to tofino target with p4c=============="
-# Use custom p4_14 compilation script, omitted for public repo
-output_namebase=$(basename $2)
-abs_output_p4_path=$(cd ${output_path}; pwd)"/"${output_namebase}"_mantis.p4"
-./p4_14_compile.sh ${abs_output_p4_path}
+# One could link the tofino p4_14 compilation script here to call the generated p4 code, script omitted for public repo
+# output_namebase=$(basename $2)
+# abs_output_p4_path=$(cd ${output_path}; pwd)"/"${output_namebase}"_mantis.p4"
+# ./p4_14_compile.sh ${abs_output_p4_path}

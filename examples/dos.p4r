@@ -1,0 +1,320 @@
+// A simple use case for dos mitigation
+
+#include <tofino/intrinsic_metadata.p4>
+#include <tofino/constants.p4>
+#include <tofino/primitives.p4>
+#include <tofino/stateful_alu_blackbox.p4>
+
+header_type ethernet_t {
+  fields {
+    dstAddr : 48;
+    srcAddr : 48;
+    etherType : 16;
+  }
+}
+
+header ethernet_t ethernet;
+
+header_type vlan_tag_t {
+  fields {
+    pri   : 3;
+    cfi   : 1;
+    vlan_id : 12;
+    etherType : 16;
+  }
+}
+
+header vlan_tag_t vlan_tag;
+
+header_type ipv4_t {
+  fields {
+    version : 4;
+    ihl : 4;
+    diffserv : 8;
+    totalLen : 16;
+    identification : 16;
+    flags : 3;
+    fragOffset : 13;
+    ttl : 8;
+    protocol : 8;
+    hdrChecksum : 16;
+    srcAddr : 32;
+    dstAddr : 32;
+  }
+}
+
+header ipv4_t ipv4;
+
+header_type udp_t {
+  fields {
+    srcPort : 16;
+    dstPort : 16;
+    hdr_length : 16;
+    checksum : 16;
+  }
+}
+
+header udp_t udp;
+
+header_type tcp_t {
+  fields {
+    srcPort : 16;
+    dstPort : 16;
+    seqNo : 32;
+    ackNo : 32;
+    dataOffset : 4;
+    res : 4;
+    flags : 8;
+    window : 16;
+    checksum : 16;
+    urgentPtr : 16;
+  }
+}
+
+header tcp_t tcp;
+
+#define UDP_TYPE 17
+#define TCP_TYPE 6
+
+parser start {
+  return parse_ethernet;
+}
+
+parser parse_ethernet {
+  extract(ethernet);
+  return select(latest.etherType) {
+    0x8100 : parse_vlan_tag;
+    0x800 : parse_ipv4;
+  }
+}
+
+parser parse_vlan_tag {
+  extract(vlan_tag);
+  return select(latest.etherType) {
+    0x800 : parse_ipv4;
+    default : ingress;
+  }
+}
+
+parser parse_ipv4 {
+  extract(ipv4);
+  return select(latest.fragOffset, latest.protocol) {
+    UDP_TYPE : parse_udp;
+    TCP_TYPE : parse_tcp;
+    default: ingress;
+  }
+}
+
+parser parse_udp {
+  extract(udp);
+  return ingress;
+}
+
+parser parse_tcp {
+  extract(tcp);
+  return ingress;
+}
+
+field_list ipv4_field_list {                                                         
+  ipv4.version;
+  ipv4.ihl;
+  ipv4.diffserv;
+  ipv4.totalLen;
+  ipv4.identification;
+  ipv4.flags;
+  ipv4.fragOffset;
+  ipv4.ttl;
+  ipv4.protocol;
+  ipv4.srcAddr;
+  ipv4.dstAddr;
+}
+
+field_list_calculation ipv4_chksum_calc {
+  input {
+    ipv4_field_list;
+  }
+  algorithm : csum16;
+  output_width: 16;
+}
+
+calculated_field ipv4.hdrChecksum {
+  update ipv4_chksum_calc;
+}
+
+field_list udp_checksum_list {
+  udp.srcPort;
+  udp.dstPort;
+  udp.hdr_length;
+  payload;
+}
+
+field_list_calculation udp_checksum_calc {
+  input {
+    udp_checksum_list;
+  }
+  algorithm : csum16;
+  output_width : 16;
+}
+
+calculated_field udp.checksum {
+  update udp_checksum_calc;
+}
+
+#define NUM_HOPS 2
+
+action ai_nop() {
+}
+
+action ai_set_egr_port(egress_port) {
+  add_to_field(ipv4.ttl, -1);
+  modify_field(ig_intr_md_for_tm.ucast_egress_port, egress_port);
+}
+
+action ai_drop_ipv4() {
+  drop();
+}
+
+@pragma stage 0
+table ti_ipv4_forwarding {
+  reads {
+    ipv4.dstAddr : ternary;
+    ipv4.srcAddr : ternary;
+  }
+  actions {
+    ai_nop;
+    ai_set_egr_port;
+  }
+  size : 1024;
+}
+
+@pragma stage 0
+table ti_blocklist {
+  reads {
+    ipv4.srcAddr : ternary;
+  }
+  actions {
+    ai_nop;
+    ai_drop_ipv4;
+  }
+}
+
+register ri_sample {
+  width : 64;
+  instance_count : 1;
+}
+
+blackbox stateful_alu bi_sample{
+  reg : ri_sample;
+// For source IP
+  update_hi_1_value : ipv4.srcAddr;
+// For packet counters
+  update_lo_1_value : register_lo + 1;
+}
+
+action ai_sample() {
+  bi_sample.execute_stateful_alu(0);
+}
+
+@pragma stage 1
+table ti_sample {
+  actions {ai_sample;}
+  default_action: ai_sample();
+}
+
+control ingress {
+  apply(ti_ipv4_forwarding);
+  apply(ti_blocklist);  
+  apply(ti_sample);
+}
+
+/*================================
+=      egress      =
+================================*/
+control egress {
+}
+
+/*================================
+=   P4R init and reaction  =
+================================*/
+init_block my_init {
+  ti_ipv4_forwarding_add_ai_set_egr_port(0, 0xa01010d, 0xffffffff, 0xa010102, 0x0, 2, 0x9a);
+  ti_ipv4_forwarding_add_ai_set_egr_port(1, 0xa010103, 0xffffffff, 0xa010102, 0x0, 2, 0x9b);
+  ti_ipv4_forwarding_add_ai_set_egr_port(2, 0xa010102, 0xffffffff, 0xa010103, 0x0, 2, 0x90);  
+}
+
+reaction my_reaction(reg ri_sample){
+  // For benchmark only
+  #include <sys/time.h>
+  #include <stdio.h>
+
+  #define MAX_FLOW_NUM 100000
+  // Prevent new flows being detected immediately
+  #define SPURIOUS_THRESHOLD_US 50
+  // Packet per second (assume 550B packets and 1Gbps threshold)
+  #define THRESHOLD_PPS 227272
+
+  static int to_append_id = 0;
+
+  static struct timeval tp;
+  static long curr_ts;
+
+  static long first_seen_time[MAX_FLOW_NUM] = {0};
+  static uint32_t flow_sizes[MAX_FLOW_NUM] = {0};
+  static uint32_t src_ips[MAX_FLOW_NUM] = {0};
+  static uint32_t prev_count = 0;
+  static bool is_blocklist[MAX_FLOW_NUM]={false};
+
+  uint32_t tmp_count = 0;
+
+  static int search_i = 0;
+
+  static int blocklist_entry_id = 3;
+
+  // Packet count diff
+  tmp_count = ri_sample[0].f1 - prev_count;
+
+  if(tmp_count>0) {
+    for(search_i=to_append_id-1; search_i>=0; search_i--) {
+      if(src_ips[search_i]==ri_sample[1].f0) {
+        break;
+      }
+    }
+    if(search_i==-1) {
+      flow_sizes[to_append_id] = tmp_count;
+      src_ips[to_append_id] = ri_sample[0].f0;
+
+      gettimeofday(&tp, NULL);
+      curr_ts = tp.tv_sec*1000000 + tp.tv_usec;
+      first_seen_time[to_append_id] = curr_ts;
+      printf("New flow with source: %X!\n", ri_sample[0].f0);
+
+      to_append_id += 1;
+    }
+    else {
+      flow_sizes[search_i] += tmp_count;
+      
+      gettimeofday(&tp, NULL);
+      curr_ts = tp.tv_sec*1000000 + tp.tv_usec;
+      double rate = flow_sizes[search_i]*1000000.0/(curr_ts-first_seen_time[search_i]);
+      if(rate>THRESHOLD_PPS) {
+        if(!is_blocklist[search_i]) {
+          if((curr_ts-first_seen_time[search_i])>=SPURIOUS_THRESHOLD_US) {
+            printf("Block source %X w rate %f and size %lu, time to detect: %lu\n", src_ips[search_i], rate, flow_sizes[search_i], curr_ts-first_seen_time[search_i]);
+            
+            ti_blocklist_add_ai_drop_ipv4(blocklist_hdl_index, src_ips[search_i], 0xffffffff, 2);
+            blocklist_hdl_index += 1;
+
+            gettimeofday(&tp, NULL);
+            curr_ts = tp.tv_sec*1000000 + tp.tv_usec;              
+            printf("Time to react: %lu\n", curr_ts-first_seen_time[search_i]);
+
+            is_blocklist[search_i] = true; 
+          }
+        }     
+      }
+    }
+  }
+
+  prev_count = ri_sample[0].f1;  
+
+}

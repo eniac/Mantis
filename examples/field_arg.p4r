@@ -5,10 +5,6 @@
 #include <tofino/stateful_alu_blackbox.p4>
 #include <tofino/primitives.p4>
 
-/*===============================
-=      Headers      =
-===============================*/
-
 header_type my_header_t {
   fields {
   foo : 8;
@@ -16,68 +12,38 @@ header_type my_header_t {
   baz : 32;
   }
 }
+
 header my_header_t hdr;
-
-
-/*=====  End of Headers  ======*/
-
-/*==============================
-=      Parser      =
-==============================*/
 
 parser start {
   return parse_header;
 }
+
 parser parse_header {
   extract(hdr);
   return ingress;
 }
 
-
-/*=====  End of Parser  ======*/
-
-
-/*======================================================
-=      P4 ingress, tables, and action      =
-======================================================*/
-
 control ingress {
-  apply(table_var);
+  apply(my_table);
 }
 
-/*=====  End of P4 ingress, tables, and action  ======*/
-
-
-/*================================
-=      P4R code      =
-================================*/
-
-malleable value value_var {
-  width : 15;
-  init : 1;
+table my_table {
+  reads { 
+    hdr.foo : exact;
+  }
+  actions { my_action;}
 }
 
-malleable field field_var {
-  width : 32;
-  init : hdr.foo;
-  alts { hdr.foo, hdr.bar }
-}
-
-malleable table table_var {
-  reads { ${field_var} : exact; }
-  actions { my_action; }
+action my_action(baz) {
+  modify_field(hdr.bar, baz);
 }
 
 control egress {
 }
 
-action my_action() {
-  add(${field_var}, hdr.baz, ${value_var});
-}
-
+// P4R code
 reaction my_reaction(ing hdr.foo, ing hdr.bar, ing hdr.baz) {
   #include <stdio.h>
   printf("Print meas %x, %x, %x\n", hdr.foo, hdr.bar, hdr.baz);
 }
-
-/*=====  End of P4R code  ======*/

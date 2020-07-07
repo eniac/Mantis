@@ -1159,7 +1159,7 @@ void generateMetadata(vector<AstNode*>* newNodes,
         oss << "  __mv : 1;\n";
     }
 
-    oss << " }" << endl;
+    oss << "  }" << endl;
     oss << "}" << endl;
     oss << "metadata " << kP4rEgrMetadataType << " "
                        << kP4rEgrMetadataName << ";\n\n";

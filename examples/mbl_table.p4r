@@ -5,9 +5,6 @@
 #include <tofino/stateful_alu_blackbox.p4>
 #include <tofino/primitives.p4>
 
-/*================================
-=      header      =
-================================*/
 header_type ethernet_t {
   fields {
     dstAddr :48;
@@ -46,10 +43,6 @@ header ethernet_t ethernet;
 header ipv4_t ipv4;
 header udp_t udp;
 
-/*================================
-=      parser       =
-================================*/
-
 #define UDP_TYPE 17
 
 parser start {
@@ -76,9 +69,6 @@ parser parse_udp {
   return ingress;
 }
 
-/*================================
-=      ingress      =
-================================*/
 action ai_nop() {
 }
 
@@ -105,15 +95,10 @@ control ingress {
   apply(ti_var_table);
 }
 
-/*================================
-=      egress      =
-================================*/
 control egress {
 }
 
-/*================================
-=   P4R reaction   =
-================================*/
+// P4R code
 init_block global_init {
   // Same syntax as if non-mbl table, Mantis handles the isolation underneath
   ti_var_table_add_ai_set_egr_port(0, 0xa01010d, 0xffffffff, 0x1, 0x90);
@@ -132,5 +117,3 @@ reaction my_reaction() {
     flip = true;
   }
 }
-
-/*=====  End of P4R code  ======*/

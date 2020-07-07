@@ -1,13 +1,10 @@
-// A simple example showing the syntax of add/delete/modify table manipulations
+// A simple example showing the syntax of add/delete/modify non-mbl table entries in prologue
 
 #include <tofino/intrinsic_metadata.p4>
 #include <tofino/constants.p4>
 #include <tofino/stateful_alu_blackbox.p4>
 #include <tofino/primitives.p4>
 
-/*================================
-=      header      =
-================================*/
 header_type ethernet_t {
   fields {
     dstAddr :48;
@@ -46,10 +43,6 @@ header ethernet_t ethernet;
 header ipv4_t ipv4;
 header udp_t udp;
 
-/*================================
-=      parser       =
-================================*/
-
 #define UDP_TYPE 17
 
 parser start {
@@ -76,9 +69,6 @@ parser parse_udp {
   return ingress;
 }
 
-/*================================
-=      ingress      =
-================================*/
 action ai_nop() {
 }
 
@@ -106,16 +96,14 @@ control ingress {
   apply(ti_ipv4_forwarding);
 }
 
-/*================================
-=      egress      =
-================================*/
 control egress {
 }
 
-/*================================
-=   init block and reaction   =
-================================*/
+// P4R code
 init_block global_init {
+  // One should only manipulate non-mbl table in prologue to set up static rules
+  // Though supporting reconfigure for non-mbl table entries in dialogue, but note that isolation is not guanranteed for tables without malleable keyword
+
   // Add a simple entry with index 0 and corresponding match arguments, priority (since ternary) and action arguments
   ti_ipv4_forwarding_add_ai_set_egr_port(0, 0xa01010d, 0xffffffff, 0xa010102, 0x0, 0x1, 0x90);
   // Modify the entry 0 with another egress port
@@ -126,16 +114,3 @@ init_block global_init {
   // Add new entry 1
   ti_ipv4_forwarding_add_ai_set_egr_port(1, 0xa01010e, 0xffffffff, 0xa010102, 0x0, 0x1, 0x90);
 } 
-
-reaction my_reaction() {
-  static bool flip = true;
-  if (flip) {
-    ti_ipv4_forwarding_mod_ai_set_egr_port(1, 0x89);
-    flip = false;
-  } else {
-    ti_ipv4_forwarding_mod_ai_set_egr_port(1, 0x90);
-    flip = true;
-  }
-}
-
-/*=====  End of P4R code  ======*/

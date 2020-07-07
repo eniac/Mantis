@@ -72,7 +72,7 @@ R"(
   }
   // Mirror %6%
   uint%1%_t %6%[%3%];
-  for (__mantis__i=0; __mantis__i < %3%; __mantis__i++) {
+  for (__mantis__i=0; __mantis__i < %5%; __mantis__i++) {
     %6%[__mantis__i] = __mantis__values_%2%[1+__mantis__i*2];
   }
 )";
@@ -84,7 +84,7 @@ R"(
 // %5%: reg arg name
 const char * const kRegArgMirrorT_64 =
 R"(
-  p4_pd_%3%%1%_value_t __mantis__values_%1%[4*%3%];
+  p4_pd_%3%%1%_value_t __mantis__values_%1%[4*%2%];
   __mantis__status_tmp = %3%register_range_read_%1%(sess_hdl, pipe_mgr_dev_tgt, 0, %4%, __mantis__reg_flags, &__mantis__num_actually_read, __mantis__values_%1%, &__mantis__value_count);
   if(__mantis__status_tmp!=0) {
     return false;

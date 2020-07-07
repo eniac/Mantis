@@ -1,0 +1,85 @@
+// A simple example in Figure 1 of the paper
+
+#include <tofino/intrinsic_metadata.p4>
+#include <tofino/constants.p4>
+#include <tofino/stateful_alu_blackbox.p4>
+#include <tofino/primitives.p4>
+
+header_type my_header_t {
+  fields {
+    foo : 8;
+    bar : 8;
+    baz : 32;
+  }
+}
+header my_header_t hdr;
+
+parser start {
+  return parse_header;
+}
+parser parse_header {
+  extract(hdr);
+  return ingress;
+}
+
+control ingress {
+  apply(table_var);
+}
+
+action drop() {
+}
+
+register re_qdepths {
+    width : 32;
+    instance_count : 128;
+}
+
+blackbox stateful_alu be_update_qdepths {
+    reg : re_qdepths;
+    update_lo_1_value : eg_intr_md.enq_qdepth;
+}
+
+action ae_update_qdepths() {
+    be_update_qdepths.execute_stateful_alu(eg_intr_md.egress_port);
+}
+
+table te_update_qdepths {
+  actions {ae_update_qdepths;}
+  default_action: ae_update_qdepths();      
+}
+
+control egress {
+  apply(te_update_qdepths);
+}
+
+// P4R code
+malleable value value_var {
+  width : 16;
+  init : 1;
+}
+
+malleable field field_var {
+  width : 32;
+  init : hdr.foo;
+  alts { hdr.foo, hdr.bar }
+}
+
+malleable table table_var {
+  reads { ${field_var} : exact; }
+  actions { my_action; drop; }
+}
+
+action my_action() {
+  add(${field_var}, hdr.baz, ${value_var});
+}
+
+reaction my_reaction(reg re_qdepths[1:10]) {
+  uint16_t current_max = 0, max_port = 0; 
+  for (int i = 1; i <= 10; ++i) {
+    if (re_queue_qdepths[i] > current_max) {
+      current_max = re_qdepths[i]; 
+      max_port = i;
+    }
+  }
+  ${value_var} = max_port;
+}

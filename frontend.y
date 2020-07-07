@@ -237,6 +237,9 @@ inputTofino :
         AstNode* rv = new InputNode($1, $2);
         node_array.push_back(rv);
         $$=rv;
+        PRINT_VERBOSE("----- parsed P4R Expr ------ \n");
+        PRINT_VERBOSE("%s\n", $2 -> toString().c_str());
+        PRINT_VERBOSE("---------------------------\n");        
     }
     | inputTofino p4ExprTofino  {
         AstNode* rv = new InputNode($1, $2);

@@ -2,7 +2,8 @@
 
 ### Prerequisites
 
-Flex, Bison, g++ (version >=4.9)
+* Flex, Bison, g++ (version >=4.9)
+* Barefoot SDE 9.0.0 (to further compile the generated malleable P4 code)
 
 ### Contents
 
@@ -32,8 +33,8 @@ The frontend generated C file is later forwarded to C preprocessor to render the
 Later Mantis will generate and load the shared object and link it to the run time agent.
 
 `compile_p4r.sh` wraps the usage of frontend.
-For example, to compile `examples/table_add_del_mod.p4r` to the tofino sde tree:
+For example, to compile `examples/failover_tstamp.p4r` to the current directory:
 
 ```
-sudo ./compile_p4r.sh examples/table_add_del_mod.p4r ./table_add_del_mod
+sudo ./compile_p4r.sh examples/failover_tstamp.p4r ./failover_tstamp
 ```
