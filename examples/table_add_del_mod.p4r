@@ -102,7 +102,7 @@ control egress {
 // P4R code
 init_block global_init {
   // One should only manipulate non-mbl table in prologue to set up static rules
-  // Though supporting reconfigure for non-mbl table entries in dialogue, but note that isolation is not guanranteed for tables without malleable keyword
+  // Though Mantis supports reconfiguration of non-mbl table entries in dialogue, note that isolation is not guaranteed for tables without malleable keyword
 
   // Add a simple entry with index 0 and corresponding match arguments, priority (since ternary) and action arguments
   ti_ipv4_forwarding_add_ai_set_egr_port(0, 0xa01010d, 0xffffffff, 0xa010102, 0x0, 0x1, 0x90);

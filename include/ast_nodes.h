@@ -28,7 +28,6 @@ using namespace std;
 
 
 // Base syntax tree node
-// At the moment, not very abstract
 class AstNode {
 public:
     bool valid_ = true;
@@ -53,7 +52,7 @@ public:
     }
 };
 
-// A P4 identifier.
+// A P4 identifier
 class NameNode : public AstNode {
 public:
     string* word_;

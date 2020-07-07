@@ -32,7 +32,7 @@ public:
     std::vector<T*>* list_;
 };
 
-// An identifier, word, int, or special char.
+// An identifier, word, int, or special char
 class BodyWordNode : public AstNode {
 public:
     enum WordType { VARREF, NAME, FIELD, STRING, INTEGER, SPECIAL };

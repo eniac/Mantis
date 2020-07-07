@@ -177,7 +177,7 @@ string P4ExprNode::toString() {
         oss << "{\n" << res << "}\n";
     } else {
         // If there's no body, its a statement that 
-        // ends with a semicolon.
+        // ends with a semicolon
         oss << ";";
     }
     return oss.str();

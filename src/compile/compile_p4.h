@@ -91,7 +91,7 @@ vector<ReactionArgBin> generateEgrDigestPacking(
             const vector<AstNode*>& astNodes,
             int* egr_iso_opt);
 
-// Generate metadata for dynamic Malleables.
+// Generate metadata for dynamic malleables
 void generateMetadata(vector<AstNode*>* newNodes,
                       const unordered_map<string,
                                           P4RMalleableValueNode*>& mblValues,
@@ -99,7 +99,7 @@ void generateMetadata(vector<AstNode*>* newNodes,
                                           P4RMalleableFieldNode*>& mblFields,
                       int ing_iso_opt, int egr_iso_opt);
 
-// Generate a merged table that sets all Malleables.
+// Generate a merged table that sets all malleables
 int generateIngInitTable(vector<AstNode*>* newNodes,
                        const unordered_map<string,
                                            P4RMalleableValueNode*>& mblValues,

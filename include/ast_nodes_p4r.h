@@ -178,11 +178,11 @@ public:
     NameNode* name_;
 };
 
-/*=====  End of p4r expressions.  ======*/
+/*=====  End of p4r expressions  ======*/
 
 
 /*============================================================
-=            Custom nodes to add transformations.            =
+=            Custom nodes to add transformations            =
 ============================================================*/
 
 class UnanchoredNode : public AstNode {
@@ -197,7 +197,7 @@ public:
     std::string *objName_;  // A P4 object to invoke
 };
 
-/*=====  End of Custom nodes to add transformations.  ======*/
+/*=====  End of Custom nodes to add transformations  ======*/
 
 
 #endif

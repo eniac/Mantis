@@ -160,8 +160,6 @@ calculated_field udp.checksum {
   update udp_checksum_calc;
 }
 
-#define NUM_HOPS 2
-
 action ai_nop() {
 }
 
@@ -227,15 +225,10 @@ control ingress {
   apply(ti_sample);
 }
 
-/*================================
-=      egress      =
-================================*/
 control egress {
 }
 
-/*================================
-=   P4R init and reaction  =
-================================*/
+// P4R code
 init_block my_init {
   ti_ipv4_forwarding_add_ai_set_egr_port(0, 0xa01010d, 0xffffffff, 0xa010102, 0x0, 2, 0x9a);
   ti_ipv4_forwarding_add_ai_set_egr_port(1, 0xa010103, 0xffffffff, 0xa010102, 0x0, 2, 0x9b);
