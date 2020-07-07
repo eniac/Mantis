@@ -241,8 +241,6 @@ P4RReactionNode::P4RReactionNode(AstNode* name, AstNode* args, AstNode* body) {
         body_ = dynamic_cast<BodyNode*>(body);
     }
     body_->parent_ = this;
-    cout << body_->toString() << endl;
-
 }
 
 string P4RReactionNode::toString() {

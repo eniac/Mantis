@@ -1,1 +1,6 @@
 **/.DS_Store
+frontend.tab.c
+frontend.tab.h
+frontend
+lex.yy.c
+out
