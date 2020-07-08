@@ -306,6 +306,22 @@ void findAndRemoveReactions(vector<P4RReactionNode*>* reactions,
     }
 }
 
+bool findTblInIng(string tableName, const vector<AstNode*>& nodeArray) {
+    P4ExprNode* ing_node = findIngress(nodeArray);
+    P4ExprNode* egr_node = findEgress(nodeArray);
+    // Currently assume that control ing/egr doesn't wrap other control blocks (otherwise requires recursive search)
+    if(ing_node==NULL || egr_node==NULL) {
+        PANIC("Missing ing/egr node for %s\n", tableName.c_str());
+    }
+    if(ing_node->body_->toString().find(tableName) != string::npos) {
+        return true;
+    } else if (egr_node->body_->toString().find(tableName) != string::npos) {
+        return false;
+    } else {
+        PANIC("Failed to locate %s in ing/egr control block\n", tableName.c_str());
+    }
+}
+
 bool findRegargInIng(ReactionArgNode* regarg, std::vector<AstNode*> nodeArray) {
 
     if(regarg->argType_!=ReactionArgNode::REGISTER) {
@@ -389,6 +405,7 @@ bool findRegargInIng(ReactionArgNode* regarg, std::vector<AstNode*> nodeArray) {
     if(ing_node==NULL || egr_node==NULL) {
         PANIC("Missing ing/egr node for %s\n", regarg->toString().c_str());
     }
+    // A valid table will either be applied at ing or egr
     if(ing_node->body_->toString().find(table_name) != string::npos) {
         return true;
     } else if (egr_node->body_->toString().find(table_name) != string::npos) {

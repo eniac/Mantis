@@ -29,22 +29,22 @@ UnanchoredNode * generateMacroNode(ostringstream& oss_preprocessor);
 
 void mirrorFieldArg(std::vector<AstNode*> nodeArray, ostringstream& oss_reaction_start, 
                     ostringstream& oss_preprocessor, vector<ReactionArgBin> bins,
-                    string prefix_str, int iso_opt);
+                    string prefix_str, bool forIng);
 
 void mirrorRegisterArgForIng(std::vector<AstNode*> nodeArray, ostringstream& oss_reaction_start, int iso_opt, string prefix_str, bool forIng);
 
-void generateMacroXorVersionBits(ostringstream& oss_reaction_start, ostringstream& oss_preprocessor, int iso_opt);
+void generateMacroXorVersionBits(ostringstream& oss_reaction_start, ostringstream& oss_preprocessor, int ing_iso_opt, int egr_iso_opt);
 
-void generateDialogueArgStart(ostringstream& oss_reaction_start, int isolation_opt);
+void generateDialogueArgStart(ostringstream& oss_reaction_start, int ing_iso_opt, int egr_iso_opt);
 
 void generateMacroNonMblTable(std::vector<AstNode*> nodeArray, ostringstream& oss_preprocessor, string prefix_str);
 
-void generateMacroMblTable(std::vector<AstNode*> nodeArray, ostringstream& oss_preprocessor, string prefix_str, int iso_opt, ostringstream& oss_reaction_mirror);
+void generateMacroMblTable(std::vector<AstNode*> nodeArray, ostringstream& oss_preprocessor, string prefix_str, int ing_iso_opt, int egr_iso_opt, ostringstream& oss_reaction_mirror);
 
-void generateMacroInitMbls(std::vector<AstNode*> nodeArray, ostringstream& oss_variable_init, ostringstream& oss_reaction_start, 
-                             ostringstream& oss_preprocessor, int num_vars, int iso_opt, string prefix_str);
+void generateMacroInitMblsForIng(std::vector<AstNode*> nodeArray, unordered_map<string, int>* mblUsages, ostringstream& oss_variable_init, ostringstream& oss_reaction_start, 
+                             ostringstream& oss_preprocessor, int num_vars, int iso_opt, string prefix_str, bool forIng);
 
-void generatePrologueEnd(std::vector<AstNode*> nodeArray, ostringstream& oss_init_end, int ing_iso_opt);
+void generatePrologueEnd(std::vector<AstNode*> nodeArray, ostringstream& oss_init_end, int ing_iso_opt, int egr_iso_opt);
 
 void generateDialogueEnd(std::vector<AstNode*> nodeArray, ostringstream& oss_reaction_end, int ing_iso_opt, int egr_iso_opt);
 

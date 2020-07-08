@@ -37,7 +37,7 @@ void transformPragma(vector<AstNode*>* astNodes) {
     }    
 }
 
-int inferIngIsolationOpt(vector<AstNode*>* nodeArray) {
+int inferIsoOptForIng(vector<AstNode*>* nodeArray, bool forIng) {
 
     int inferred_iso = -1;
     bool require_meas_iso = true;
@@ -47,34 +47,38 @@ int inferIngIsolationOpt(vector<AstNode*>* nodeArray) {
     bool has_regarg = false;
     bool has_fieldarg = false;
 
-    for (auto ra : reaction_args) {    
-        if (ra->argType_==ReactionArgNode::REGISTER) {
-            if(findRegargInIng(ra, *nodeArray)) {
+    for (auto ra : reaction_args) {   
+        if(forIng) {
+            if (ra->argType_==ReactionArgNode::REGISTER) {
+                if(findRegargInIng(ra, *nodeArray)) {
+                    num_args += 1;
+                    has_regarg = true;
+                }
+            }
+            if (ra->argType_==ReactionArgNode::INGRESS_FIELD || ra->argType_==ReactionArgNode::INGRESS_MBL_FIELD) {
                 num_args += 1;
-                has_regarg = true;
+                has_fieldarg = true;
+            }
+        } else {
+            if (ra->argType_==ReactionArgNode::REGISTER) {
+                if(!findRegargInIng(ra, *nodeArray)) {
+                    num_args += 1;
+                    has_regarg = true;
+                }
+            }
+            if (ra->argType_==ReactionArgNode::EGRESS_FIELD || ra->argType_==ReactionArgNode::EGRESS_MBL_FIELD) {
+                num_args += 1;
+                has_fieldarg = true;
             }
         }
-        if (ra->argType_==ReactionArgNode::INGRESS_FIELD || ra->argType_==ReactionArgNode::INGRESS_MBL_FIELD) {
-            num_args += 1;
-            has_fieldarg = true;
-        }
     }
+
     if (num_args <= 1) {
         require_meas_iso = false;
     } else {
         // Potentially being false after bin-packing (single packed register, 2 single element reg)
         // Also single element 32b reg could be packed with field arg into a single 64b reg
     }
-
-    int num_mbls = 0;
-    for (auto node : *nodeArray) {
-        if (typeContains(node, "P4RMalleableValueNode")) {
-            num_mbls += 1;
-        } else if (typeContains(node, "P4RMalleableFieldNode")) {
-            num_mbls += 1;
-        }
-    }
-    PRINT_VERBOSE("Number of mbl value/field: %d\n", num_mbls);
 
     // Simple static analysis to differentiate the case requiring no update isolation
     P4RReactionNode * react_node = findReaction(*nodeArray);
@@ -88,12 +92,24 @@ int inferIngIsolationOpt(vector<AstNode*>* nodeArray) {
         if(typeContains(node, "P4RMalleableTableNode")) {
             P4RMalleableTableNode* table = dynamic_cast<P4RMalleableTableNode*>(node);
             string table_name = *(table->table_->name_->word_);
+
+            if(forIng) {
+                if(!findTblInIng(table_name, *nodeArray)) {
+                    continue;
+                }
+            } else {
+                if(findTblInIng(table_name, *nodeArray)) {
+                    continue;
+                }
+            }
+            
             if(user_dialogue.find(table_name+"_mod")!=std::string::npos || user_dialogue.find(table_name+"_add")!=std::string::npos || user_dialogue.find(table_name+"_del")!=std::string::npos) {
                 foundMblOperation = true;
                 break;
             }
         }
     } 
+
     if (!foundMblOperation) {
         require_react_iso = false;
     }
@@ -108,45 +124,13 @@ int inferIngIsolationOpt(vector<AstNode*>* nodeArray) {
         inferred_iso = 0;
     }
 
-    PRINT_VERBOSE("Inferred ing isolation option: %d\n", inferred_iso);
-    return inferred_iso;
-
-}
-
-int inferEgrIsolationOpt(vector<AstNode*>* nodeArray) {
-
-    int inferred_iso = -1;
-    bool require_meas_iso = true;
-    // For egr, presumbly only mv update if any
-    bool require_react_iso = false;
-    vector<ReactionArgNode*> reaction_args = findReactionArgs(*nodeArray);
-    int num_args = 0;
-    bool has_regarg = false;
-    bool has_fieldarg = false;
-    for (auto ra : reaction_args) {    
-        if (ra->argType_==ReactionArgNode::REGISTER) {
-            if(!findRegargInIng(ra, *nodeArray)) {
-                num_args += 1;
-                has_regarg = true;
-            }            
-        }
-        if (ra->argType_==ReactionArgNode::EGRESS_FIELD || ra->argType_==ReactionArgNode::EGRESS_MBL_FIELD) {
-            num_args += 1;
-            has_fieldarg = true;
-        }
-    }
-    if (num_args <= 1) {
-        require_meas_iso = false;
-    }
-
-    if (require_meas_iso) {
-        inferred_iso = 1;
+    if(forIng) {
+        PRINT_VERBOSE("Inferred ing isolation option: %d\n", inferred_iso);
     } else {
-        inferred_iso = 0;
+        PRINT_VERBOSE("Inferred egr isolation option: %d\n", inferred_iso);
     }
-    PRINT_VERBOSE("Inferred egr isolation option: %d\n", inferred_iso);
-    return inferred_iso;
 
+    return inferred_iso;
 }
 
 // Wrap ingress with calls to setup and finalize
@@ -154,8 +138,7 @@ bool augmentIngress(vector<AstNode*>* astNodes) {
     // Fetch ingress
     P4ExprNode* ingressNode = findIngress(*astNodes);
     if (!ingressNode) {
-        cout << "Error: could not find the ingress control block.  "
-             << "perhaps you didn't call it 'ingress'?" << endl;
+        PANIC("Error: could not find the egress control block. Perhaps you didn't call it 'ingress'?\n");
         exit(1);
     }
 
@@ -191,8 +174,7 @@ bool augmentEgress(vector<AstNode*>* astNodes) {
     // Fetch egress
     P4ExprNode* egressNode = findEgress(*astNodes);
     if (!egressNode) {
-        cout << "Error: could not find the egress control block.  "
-             << "perhaps you didn't call it 'egress'?" << endl;
+        PANIC("Error: could not find the egress control block. Perhaps you didn't call it 'egress'?\n");
         exit(1);
     }
 
@@ -222,7 +204,7 @@ bool augmentEgress(vector<AstNode*>* astNodes) {
     return true;
 }
 
-void transformTableWithRefRead(MblRefNode* ref, TableNode* table,
+static void transformTableWithRefRead(MblRefNode* ref, TableNode* table,
                                const P4RMalleableFieldNode& variable) {
     auto readStmtsNode = dynamic_cast<TableReadStmtsNode*>(ref->parent_->parent_);
 
@@ -262,7 +244,7 @@ void transformTableWithRefRead(MblRefNode* ref, TableNode* table,
     }
 }
 
-void duplicateActions(MblRefNode* ref, ActionNode* action,
+static void duplicateActions(MblRefNode* ref, ActionNode* action,
                       vector<MblRefNode*>* mblRefs,
                       vector<AstNode*>* nodeArray,
                       const P4RMalleableFieldNode& variable) {
@@ -345,7 +327,7 @@ void duplicateActions(MblRefNode* ref, ActionNode* action,
     }
 }
 
-void transformMalleableFieldRef(MblRefNode* ref, vector<MblRefNode*>* mblRefs,
+static void transformMalleableFieldRef(MblRefNode* ref, vector<MblRefNode*>* mblRefs,
                                vector<AstNode*>* nodeArray,
                                const P4RMalleableFieldNode& variable) {
     // malleable field references can be in (1) actions, (2) table match fields,
@@ -366,8 +348,84 @@ void transformMalleableFieldRef(MblRefNode* ref, vector<MblRefNode*>* mblRefs,
         parent = parent->parent_;
     }
 
-    cout << "Syntax Error: Could not find parent of variable reference" << endl;
+    PANIC("Syntax Error: Could not find parent of variable reference\n");
     exit(1);
+}
+
+void findMalleableUsage(
+            vector<MblRefNode*> mblRefs,
+            const unordered_map<string, P4RMalleableValueNode*> mblValues,
+            const unordered_map<string, P4RMalleableFieldNode*> mblFields,
+            vector<AstNode*>* nodeArray,
+            unordered_map<string, int>* mblUsage) {
+
+    while (!mblRefs.empty()) {
+        MblRefNode* varRef = mblRefs.front();
+        mblRefs.erase(mblRefs.begin());
+
+        string* varName = varRef->name_->word_;
+
+        if(mblUsage->find(*varName) != mblUsage->end()) {
+            continue;
+        }
+
+        // Find the usage index: 0 - ingress, 1 - egress, 2 - both
+        bool in_ingress = false;
+        bool in_egress = false;
+        // One var could be used in multiple tbls
+        for (auto node : *nodeArray) {
+            // Though filter P4RMalleableTableNode, its table node is still searched
+            if(typeContains(node, "TableNode") && !typeContains(node, "P4R")) {
+                TableNode* table = dynamic_cast<TableNode*>(node);
+                string table_name = *(table->name_->word_);
+
+                // Try to determine if the table uses the mblRef
+                bool useMblRef = false;
+                if(table->toString().find(*varName) != string::npos) {
+                    useMblRef = true;
+                } else {
+                    // Check if used actions
+                    for (auto action : *table->actions_->list_) {
+                        for (auto tmp_node : *nodeArray) {
+                            if(typeContains(tmp_node, "ActionNode")) {
+                                ActionNode* tmp_action_node = dynamic_cast<ActionNode*>(tmp_node);
+                                string tmp_action_name = tmp_action_node->name_->toString();
+                                if(tmp_action_name.compare(action->name_->toString())==0) {
+                                    if(tmp_action_node->toString().find(*varName) != string::npos) {
+                                        useMblRef = true;
+                                        break;
+                                    }
+                                }
+                            }
+                        }
+                        if(useMblRef) {
+                            break;
+                        }                        
+                    }
+                }
+                if(useMblRef) {
+                    if(findTblInIng(table_name, *nodeArray)) {
+                        in_ingress = true;
+                    } else {
+                        in_egress = true;
+                    }
+                }
+            }
+        }
+        if(in_ingress && in_egress) {
+            mblUsage->emplace(*varName, USAGE::BOTH);
+        } else if (in_ingress) {
+            mblUsage->emplace(*varName, USAGE::INGRESS);
+        } else if (in_egress) {
+            mblUsage->emplace(*varName, USAGE::EGRESS);
+        } else {
+            PANIC("Can not find the target mblRef %s usage\n", varName->c_str());
+        }
+    }
+    PRINT_VERBOSE("mbl usage dict:\n");
+    for (auto i : *mblUsage) {
+        PRINT_VERBOSE("  %s : %d\n", i.first.c_str(), i.second);
+    }
 }
 
 void transformMalleableRefs(
@@ -410,19 +468,28 @@ void transformMalleableRefs(
             transformMalleableFieldRef(varRef, mblRefs, nodeArray,
                                       *mblFields.find(*varName)->second);
         } else {
-            cout << "ERROR: Unknown malleable ref!!" << endl;
+            PANIC("Unknown malleable ref!");
         }
     }
 }
 
-void transformMalleableTables(
-            unordered_map<string, P4RMalleableTableNode*>* varTables, int ing_iso_opt) {
-    if (((unsigned int)ing_iso_opt) & 0b10) {
-        for (auto t : *varTables) {
-            auto field = new FieldNode(new NameNode(new string(kP4rIngMetadataName)),
-                                    new NameNode(new string("__vv")));
-            auto readstmt = new TableReadStmtNode(TableReadStmtNode::EXACT, field);
-            t.second->table_->reads_->list_->push_back(readstmt);
+void transformMalleableTables(unordered_map<string, P4RMalleableTableNode*>* varTables, vector<AstNode*> nodeArray, int ing_iso_opt, int egr_iso_opt) {
+    for (auto t : *varTables) {
+        // Check if mbl table in ing/egr
+        if(findTblInIng(t.second->table_->name_->toString(), nodeArray)) {
+            if (((unsigned int)ing_iso_opt) & 0b10) {
+                auto field = new FieldNode(new NameNode(new string(kP4rIngMetadataName)),
+                                        new NameNode(new string("__vv")));
+                auto readstmt = new TableReadStmtNode(TableReadStmtNode::EXACT, field);
+                t.second->table_->reads_->list_->push_back(readstmt);
+            }
+        } else {
+            if (((unsigned int)egr_iso_opt) & 0b10) {
+                auto field = new FieldNode(new NameNode(new string(kP4rEgrMetadataName)),
+                                        new NameNode(new string("__vv")));
+                auto readstmt = new TableReadStmtNode(TableReadStmtNode::EXACT, field);
+                t.second->table_->reads_->list_->push_back(readstmt);
+            }
         }
     }
 }
@@ -1169,21 +1236,41 @@ void generateMetadata(vector<AstNode*>* newNodes,
                                            new string(kP4rEgrMetadataName)));    
 }
 
-// Generate a merged table that sets all mbls
-int generateIngInitTable(vector<AstNode*>* newNodes,
-                       const unordered_map<string,
-                                           P4RMalleableValueNode*>& mblValues,
-                       const unordered_map<string,
-                                           P4RMalleableFieldNode*>& mblFields,
-                       int ing_iso_opt) {
+int generateInitTableForIng(unordered_map<string, int>* mblUsages,
+                               vector<AstNode*>* newNodes,
+                               const unordered_map<string,
+                                                   P4RMalleableValueNode*>& mblValues,
+                               const unordered_map<string,
+                                                   P4RMalleableFieldNode*>& mblFields,
+                               int iso_opt, bool forIng) {
 
     // As the set of mbls in practice is small, currently a monolithic init for ing or egr
     ostringstream oss;
-    oss << "action " << kP4rIngInitAction<< "(";
+    string p4rInitActionName;
+    string p4rSetVarTblName;
+    string p4rMetadataName;
+    
+    if(forIng) {
+        p4rInitActionName = string(kP4rIngInitAction);
+        p4rSetVarTblName = "__tiSetVars";
+        p4rMetadataName = string(kP4rIngMetadataName);
+    } else {
+        p4rInitActionName = string(kP4rEgrInitAction);
+        p4rSetVarTblName = "__teSetVars";
+        p4rMetadataName = string(kP4rEgrMetadataName);
+    }
+
+    oss << "action " << p4rInitActionName << "(";
     bool first = true;
     bool has_var = false;
     int num_vars = 0;
     for (auto kv : mblValues) {
+        if(forIng && mblUsages->at(kv.first)==USAGE::EGRESS) {
+            continue;
+        } 
+        if(!forIng && mblUsages->at(kv.first)==USAGE::INGRESS) {
+            continue;
+        }  
         if (first) {
             first = false;
         } else {
@@ -1194,6 +1281,12 @@ int generateIngInitTable(vector<AstNode*>* newNodes,
         num_vars += 1;
     }
     for (auto kv : mblFields) {
+        if(forIng && mblUsages->at(kv.first)==USAGE::EGRESS) {
+            continue;
+        } 
+        if(!forIng && mblUsages->at(kv.first)==USAGE::INGRESS) {
+            continue;
+        }         
         if (first) {
             first = false;
         } else {
@@ -1204,100 +1297,81 @@ int generateIngInitTable(vector<AstNode*>* newNodes,
         num_vars += 1;
     }
 
-    if(has_var && ing_iso_opt != 0) {
+    if(has_var && iso_opt != 0) {
         oss << ", ";
     }
 
-    if(ing_iso_opt == 1) {
+    if(iso_opt == 1) {
         oss << "__mv";
         num_vars += 1;
-    } else if(ing_iso_opt == 2) {
+    } else if(iso_opt == 2) {
         oss << "__vv";
         num_vars += 1;
-    } else if (ing_iso_opt == 3) {
+    } else if (iso_opt == 3) {
         oss << "__mv , __vv";
         num_vars += 2;
     }
-    PRINT_VERBOSE("Number of ing malleables to set: %d\n", num_vars);
+    if(forIng) {
+        PRINT_VERBOSE("Number of ing vars to set in init: %d\n", num_vars);
+    } else {
+        PRINT_VERBOSE("Number of egr vars to set in init: %d\n", num_vars);
+    }
 
     oss << ") {\n";
 
     for (auto kv : mblValues) {
-        oss << "  modify_field(" << kP4rIngMetadataName << "." << kv.first
+        if(forIng && mblUsages->at(kv.first)==USAGE::EGRESS) {
+            continue;
+        } 
+        if(!forIng && mblUsages->at(kv.first)==USAGE::INGRESS) {
+            continue;
+        }        
+        oss << "  modify_field(" << p4rMetadataName << "." << kv.first
                                 << ", p__" << kv.first << ");\n";
     }
 
     for (auto kv : mblFields) {
-        oss << "  modify_field(" << kP4rIngMetadataName << "."
+        if(forIng && mblUsages->at(kv.first)==USAGE::EGRESS) {
+            continue;
+        } 
+        if(!forIng && mblUsages->at(kv.first)==USAGE::INGRESS) {
+            continue;
+        }         
+        oss << "  modify_field(" << p4rMetadataName << "."
                                 << kv.first << kP4rIndexSuffix
                                 << ", p__" << kv.first << kP4rIndexSuffix
                                 << ");\n";
     }
 
-    if(((unsigned int)ing_iso_opt) & 0b1) {
-        oss << "  modify_field(" << kP4rIngMetadataName << "."
+    if(((unsigned int)iso_opt) & 0b1) {
+        oss << "  modify_field(" << p4rMetadataName << "."
                                 << "__mv, __mv"
                                 << ");\n";
     } 
-    if (((unsigned int)ing_iso_opt) & 0b10) {
-        oss << "  modify_field(" << kP4rIngMetadataName << "."
+    if (((unsigned int)iso_opt) & 0b10) {
+        oss << "  modify_field(" << p4rMetadataName << "."
                                 << "__vv, __vv"
                                 << ");\n";
     } 
 
     // Typically, pragma stage 0 not required
     oss << "}\n\n"
-        << "table __tiSetVars {\n"
+        << "table "
+        << p4rSetVarTblName
+        << " {\n"
         << "  actions {\n"
-        << "    " << kP4rIngInitAction<< ";\n"
+        << "    " << p4rInitActionName << ";\n"
         << "  }\n"
         << "  size : 1;\n"
         << "}\n\n";
 
     string* codeStr = new string(oss.str());
     string* objType = new string("table");
-    string* tableName = new string("__tiSetVars");
+    string* tableName = new string(p4rSetVarTblName);
 
     newNodes->push_back(new UnanchoredNode(codeStr, objType, tableName));
 
     return num_vars;
-}
-
-void generateEgrInitTable(vector<AstNode*>* newNodes,
-                       const unordered_map<string,
-                                           P4RMalleableValueNode*>& mblValues,
-                       const unordered_map<string,
-                                           P4RMalleableFieldNode*>& mblFields,
-                       int egr_iso_opt) {
-    ostringstream oss;
-    oss << "action " << kP4rEgrInitAction << "(";
-
-    if(((unsigned int)egr_iso_opt) & 0b1) {
-        oss << "__mv";
-    }
-
-    oss << ") {\n";
-
-    if(((unsigned int)egr_iso_opt) & 0b1) {
-        oss << " modify_field(" << kP4rEgrMetadataName << "."
-                                << "__mv, __mv"
-                                << ");\n";
-    }
-
-    oss << "}\n\n"
-        << "table __teSetVars {\n"
-        << "  actions {\n"
-        << "    " << kP4rEgrInitAction<< ";\n"
-        << "  }\n"
-        << "  size : 1;\n"
-        << "}\n\n";
-
-    string* codeStr = new string(oss.str());
-    string* objType = new string("table");
-    string* tableName = new string("__teSetVars");
-
-    newNodes->push_back(new UnanchoredNode(codeStr, objType, tableName));
-
 }
 
 void generateSetvarControl(vector<AstNode*>* newNodes) {

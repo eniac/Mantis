@@ -264,22 +264,22 @@ reaction my_reaction(reg ri_sample){
   static int blocklist_entry_id = 3;
 
   // Packet count diff
-  tmp_count = ri_sample[0].f1 - prev_count;
+  tmp_count = ri_sample[0].lo - prev_count;
 
   if(tmp_count>0) {
     for(search_i=to_append_id-1; search_i>=0; search_i--) {
-      if(src_ips[search_i]==ri_sample[1].f0) {
+      if(src_ips[search_i]==ri_sample[0].hi) {
         break;
       }
     }
     if(search_i==-1) {
       flow_sizes[to_append_id] = tmp_count;
-      src_ips[to_append_id] = ri_sample[0].f0;
+      src_ips[to_append_id] = ri_sample[0].hi;
 
       gettimeofday(&tp, NULL);
       curr_ts = tp.tv_sec*1000000 + tp.tv_usec;
       first_seen_time[to_append_id] = curr_ts;
-      printf("New flow with source: %X!\n", ri_sample[0].f0);
+      printf("New flow with source: %X!\n", ri_sample[0].hi);
 
       to_append_id += 1;
     }
@@ -308,6 +308,6 @@ reaction my_reaction(reg ri_sample){
     }
   }
 
-  prev_count = ri_sample[0].f1;  
+  prev_count = ri_sample[0].lo;  
 
 }

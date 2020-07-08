@@ -77,6 +77,8 @@ vector<pair<ReactionArgNode*, int> > findAllReactionArgSizes(
 void findAndRemoveReactions(vector<P4RReactionNode*>* reactions,
                             const vector<AstNode*>& astNodes);
 
+bool findTblInIng(string tableName, const vector<AstNode*>& astNodes);
+
 bool findRegargInIng(ReactionArgNode* regarg, std::vector<AstNode*> astNodes);
 
 int findRegargWidth(ReactionArgNode* regarg, std::vector<AstNode*> nodeArray);

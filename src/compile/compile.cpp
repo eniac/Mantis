@@ -29,35 +29,40 @@
 
 static int ing_iso_opt = -1;
 static int egr_iso_opt = -1;
-static int num_init_vars = -1;
+static int num_init_mbls_ing = -1;
+static int num_init_mbls_egr = -1;
 static vector<ReactionArgBin> global_ing_bins;
 static vector<ReactionArgBin> global_egr_bins;
-
+static unordered_map<string, int> mblUsages;
 
 vector<AstNode*> compileP4Code(vector<AstNode*>* nodeArray) {
 
-    ing_iso_opt = inferIngIsolationOpt(nodeArray);
-    egr_iso_opt = inferEgrIsolationOpt(nodeArray);
+    ing_iso_opt = inferIsoOptForIng(nodeArray, true);
+    egr_iso_opt = inferIsoOptForIng(nodeArray, false);
 
     transformPragma(nodeArray);
 
-    unordered_map<string, P4RMalleableValueNode*> varValues;
-    unordered_map<string, P4RMalleableFieldNode*> varFields;
-    unordered_map<string, P4RMalleableTableNode*> varTables;
-    findAndRemoveMalleables(&varValues, &varFields, &varTables, *nodeArray);
+    unordered_map<string, P4RMalleableValueNode*> mblValues;
+    unordered_map<string, P4RMalleableFieldNode*> mblFields;
+    unordered_map<string, P4RMalleableTableNode*> mblTables;
+    findAndRemoveMalleables(&mblValues, &mblFields, &mblTables, *nodeArray);
 
-    vector<MblRefNode*> varRefs;
-    findMalleableRefs(&varRefs, *nodeArray);
+    vector<MblRefNode*> mblRefs;
+    findMalleableRefs(&mblRefs, *nodeArray);
 
-    // Transform all references to Malleables into references to the appropriate metadata
-    transformMalleableRefs(&varRefs, varValues, varFields, nodeArray);
-    transformMalleableTables(&varTables, ing_iso_opt);
+    // Before transformation, find the corresponding usage
+    findMalleableUsage(mblRefs, mblValues, mblFields, nodeArray, &mblUsages);
+
+    // Transform all references to mbls into references to the appropriate metadata
+    transformMalleableRefs(&mblRefs, mblValues, mblFields, nodeArray);
+
+    transformMalleableTables(&mblTables, *nodeArray, ing_iso_opt, egr_iso_opt);
 
     auto newNodes = vector<AstNode*>();
 
-    generateMetadata(&newNodes, varValues, varFields, ing_iso_opt, egr_iso_opt);
-    num_init_vars = generateIngInitTable(&newNodes, varValues, varFields, ing_iso_opt);
-    generateEgrInitTable(&newNodes, varValues, varFields, egr_iso_opt);
+    generateMetadata(&newNodes, mblValues, mblFields, ing_iso_opt, egr_iso_opt);
+    num_init_mbls_ing = generateInitTableForIng(&mblUsages, &newNodes, mblValues, mblFields, ing_iso_opt, true);
+    num_init_mbls_egr = generateInitTableForIng(&mblUsages, &newNodes, mblValues, mblFields, egr_iso_opt, false);
 
     generateSetvarControl(&newNodes);
 
@@ -66,9 +71,9 @@ vector<AstNode*> compileP4Code(vector<AstNode*>* nodeArray) {
     vector<ReactionArgNode*> reaction_args = findReactionArgs(*nodeArray);
 
     global_ing_bins = generateIngDigestPacking(&newNodes, reaction_args, headerDecsMap,
-                    varValues, varFields, *nodeArray, &ing_iso_opt);
+                    mblValues, mblFields, *nodeArray, &ing_iso_opt);
     global_egr_bins = generateEgrDigestPacking(&newNodes, reaction_args, headerDecsMap,
-                    varValues, varFields, *nodeArray, &egr_iso_opt);    
+                    mblValues, mblFields, *nodeArray, &egr_iso_opt);    
 
     // After packing, iso_opt is firm
     augmentRegisterArgProgForIng(&newNodes, nodeArray, reaction_args, ing_iso_opt, true);   
@@ -105,20 +110,22 @@ vector<UnanchoredNode *> compileCCode(std::vector<AstNode*> nodeArray, char * ou
 
     generateMacroNonMblTable(nodeArray, oss_preprocessor, prefix_str);
  
-    generatePrologueEnd(nodeArray, oss_init_end, ing_iso_opt);
+    generatePrologueEnd(nodeArray, oss_init_end, ing_iso_opt, egr_iso_opt);
 
-    generateMacroInitMbls(nodeArray, oss_mbl_init, oss_reaction_mirror, oss_preprocessor, num_init_vars, ing_iso_opt, prefix_str);
+    generateMacroInitMblsForIng(nodeArray, &mblUsages, oss_mbl_init, oss_reaction_mirror, oss_preprocessor, num_init_mbls_ing, ing_iso_opt, prefix_str, true);
+    generateMacroInitMblsForIng(nodeArray, &mblUsages, oss_mbl_init, oss_reaction_mirror, oss_preprocessor, num_init_mbls_egr, egr_iso_opt, prefix_str, false);
 
-    generateMacroXorVersionBits(oss_reaction_mirror, oss_preprocessor, ing_iso_opt);
+    generateMacroXorVersionBits(oss_reaction_mirror, oss_preprocessor, ing_iso_opt, egr_iso_opt);
 
-    generateDialogueArgStart(oss_reaction_mirror, ing_iso_opt);
+    generateDialogueArgStart(oss_reaction_mirror, ing_iso_opt, egr_iso_opt);
 
-    mirrorFieldArg(nodeArray, oss_reaction_mirror, oss_preprocessor, global_ing_bins, prefix_str, ing_iso_opt);
+    mirrorFieldArg(nodeArray, oss_reaction_mirror, oss_preprocessor, global_ing_bins, prefix_str, true);
+    mirrorFieldArg(nodeArray, oss_reaction_mirror, oss_preprocessor, global_egr_bins, prefix_str, false);
 
     mirrorRegisterArgForIng(nodeArray, oss_reaction_mirror, ing_iso_opt, prefix_str, true);
     mirrorRegisterArgForIng(nodeArray, oss_reaction_mirror, egr_iso_opt, prefix_str, false);
 
-    generateMacroMblTable(nodeArray, oss_preprocessor, prefix_str, ing_iso_opt, oss_reaction_mirror);
+    generateMacroMblTable(nodeArray, oss_preprocessor, prefix_str, ing_iso_opt, egr_iso_opt, oss_reaction_mirror);
 
     generateDialogueEnd(nodeArray, oss_reaction_update, ing_iso_opt, egr_iso_opt);
 

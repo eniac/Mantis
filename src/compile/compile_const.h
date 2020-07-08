@@ -53,7 +53,8 @@ const char* const kActionSuffixStr = "action_spec_t";
 const char* const kErrorCheckStr = "if(__mantis__status_tmp!=0) {return false;}_MANTIS_NL_";
 
 static int kHandlerOffset = 2;
-static int kInitEntryHandlerIndex = 0;
+static int kIngInitEntryHandlerIndex = 0;
+static int kEgrInitEntryHandlerIndex = 1;
 // Consistent with the agent malloc size of user_hdls
 static int kNumUserHdls = 5000;
 
@@ -84,13 +85,13 @@ R"(
 // %5%: reg arg name
 const char * const kRegArgMirrorT_64 =
 R"(
-  p4_pd_%3%%1%_value_t __mantis__values_%1%[4*%2%];
+  %3%%1%_value_t __mantis__values_%1%[4*%2%];
   __mantis__status_tmp = %3%register_range_read_%1%(sess_hdl, pipe_mgr_dev_tgt, 0, %4%, __mantis__reg_flags, &__mantis__num_actually_read, __mantis__values_%1%, &__mantis__value_count);
   if(__mantis__status_tmp!=0) {
     return false;
   }
   // Mirror %5%
-  p4_pd_%3%%1%_value_t %5%[%2%];
+  %3%%1%_value_t %5%[%2%];
   for (__mantis__i=0; __mantis__i < %4%; __mantis__i++) {
     %5%[__mantis__i] = __mantis__values_%1%[1+__mantis__i*2];
   }
@@ -109,38 +110,48 @@ R"(
   static uint32_t %1%__tstamp__P4Rreplicas0[%3%];
   static uint32_t %1%__tstamp__P4Rreplicas1[%3%];
   if(__mantis__mv==0) {
-    uint%2%_t __mantis__values_%1%__P4Rreplicas0[4*%3%];
+    %4%%1%_value_t __mantis__values_%1%__P4Rreplicas0[4*%3%];
     __mantis__status_tmp = %4%register_range_read_%1%__P4Rreplicas0(sess_hdl, pipe_mgr_dev_tgt, 0, %5%, __mantis__reg_flags, &__mantis__num_actually_read, __mantis__values_%1%__P4Rreplicas0, &__mantis__value_count);
     if(__mantis__status_tmp!=0) {
       return false;
     }
     for (__mantis__i=0; __mantis__i < %5%; __mantis__i++) {
-      if(__mantis__values_%1%__P4Rreplicas0[1+__mantis__i*2].f0 > uint32_t %1%__tstamp__P4Rreplicas0[__mantis__i]) {
-        %1%[__mantis__i] = __mantis__values_%1%__P4Rreplicas0[1+__mantis__i*2].f1;
-        %1%__tstamp__P4Rreplicas0[__mantis__i] = __mantis__values_%1%__P4Rreplicas0[1+__mantis__i*2].f0;
+      if(__mantis__values_%1%__P4Rreplicas0[1+__mantis__i*2].hi > uint32_t %1%__tstamp__P4Rreplicas0[__mantis__i]) {
+        %1%[__mantis__i] = __mantis__values_%1%__P4Rreplicas0[1+__mantis__i*2].lo;
+        %1%__tstamp__P4Rreplicas0[__mantis__i] = __mantis__values_%1%__P4Rreplicas0[1+__mantis__i*2].hi;
       }
     }
   } else {
-  uint%2%_t __mantis__values_%1%__P4Rreplicas1[4*%3%];
-  __mantis__status_tmp = %4%register_range_read_%1%__P4Rreplicas1(sess_hdl, pipe_mgr_dev_tgt, 0, %5%, __mantis__reg_flags, &__mantis__num_actually_read, __mantis__values_%1%__P4Rreplicas1, &__mantis__value_count);
-  if(__mantis__status_tmp!=0) {
-    return false;
-  }
-  for (__mantis__i=0; __mantis__i < %5%; __mantis__i++) {
-    if(__mantis__values_%1%__P4Rreplicas1[1+__mantis__i*2].f0 > uint32_t %1%__tstamp__P4Rreplicas1[__mantis__i]) {
-      %1%[__mantis__i] = __mantis__values_%1%__P4Rreplicas1[1+__mantis__i*2].f1;
-      %1%__tstamp__P4Rreplicas1[__mantis__i] = __mantis__values_%1%__P4Rreplicas1[1+__mantis__i*2].f0;
-    }		
+    %4%%1%_value_t __mantis__values_%1%__P4Rreplicas1[4*%3%];
+    __mantis__status_tmp = %4%register_range_read_%1%__P4Rreplicas1(sess_hdl, pipe_mgr_dev_tgt, 0, %5%, __mantis__reg_flags, &__mantis__num_actually_read, __mantis__values_%1%__P4Rreplicas1, &__mantis__value_count);
+    if(__mantis__status_tmp!=0) {
+      return false;
+    }
+    for (__mantis__i=0; __mantis__i < %5%; __mantis__i++) {
+      if(__mantis__values_%1%__P4Rreplicas1[1+__mantis__i*2].hi > uint32_t %1%__tstamp__P4Rreplicas1[__mantis__i]) {
+        %1%[__mantis__i] = __mantis__values_%1%__P4Rreplicas1[1+__mantis__i*2].lo;
+        %1%__tstamp__P4Rreplicas1[__mantis__i] = __mantis__values_%1%__P4Rreplicas1[1+__mantis__i*2].hi;
+      }		
+    }
   }
 )";
 
 // %1%: bin size
 // %2%: bin index
 // %3%: prefix_str
-const char * const kFieldArgPollT = 
+const char * const kIngFieldArgPollT = 
 R"(
-  uint%1%_t __mantis__values_%2%[4];
-  __mantis__status_tmp = %3%regiser_read___riSetArgs%2%(sess_hdl, pipe_mgr_dev_tgt, __mantis__mv, __mantis__reg_flags, __mantis__values_%2%, &__mantis__value_count);
+  uint%1%_t __mantis__values_riSetArgs_%2%[4];
+  __mantis__status_tmp = %3%regiser_read___riSetArgs%2%(sess_hdl, pipe_mgr_dev_tgt, __mantis__mv, __mantis__reg_flags, __mantis__values_riSetArgs_%2%, &__mantis__value_count);
+  if(__mantis__status_tmp!=0) {
+    return false;
+  }
+)";
+
+const char * const kEgrFieldArgPollT = 
+R"(
+  uint%1%_t __mantis__values_reSetArgs_%2%[4];
+  __mantis__status_tmp = %3%regiser_read___reSetArgs%2%(sess_hdl, pipe_mgr_dev_tgt, __mantis__mv, __mantis__reg_flags, __mantis__values_reSetArgs_%2%, &__mantis__value_count);
   if(__mantis__status_tmp!=0) {
     return false;
   }

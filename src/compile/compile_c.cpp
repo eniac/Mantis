@@ -122,10 +122,14 @@ UnanchoredNode * generateMacroNode(ostringstream& oss_preprocessor) {
 // Currently not mirroring mbl field arg
 void mirrorFieldArg(std::vector<AstNode*> nodeArray, ostringstream& oss_reaction_mirror, 
                     ostringstream& oss_preprocessor, vector<ReactionArgBin> bins,
-                    string prefix_str, int iso_opt) {
+                    string prefix_str, bool forIng) {
     for (int i = 0; i < bins.size(); ++i) {
         // Applies to both cases with/without isolation by indexing __mv
-        oss_reaction_mirror << str(boost::format(kFieldArgPollT) % std::to_string(bins[i].second) % std::to_string(i) % prefix_str);
+        if(forIng) {
+            oss_reaction_mirror << str(boost::format(kIngFieldArgPollT) % std::to_string(bins[i].second) % std::to_string(i) % prefix_str);
+        } else {
+            oss_reaction_mirror << str(boost::format(kEgrFieldArgPollT) % std::to_string(bins[i].second) % std::to_string(i) % prefix_str);
+        }
 
         // Reverse order
         for (int j = bins[i].first.size()-1; j >= 0; --j) {      
@@ -139,21 +143,39 @@ void mirrorFieldArg(std::vector<AstNode*> nodeArray, ostringstream& oss_reaction
             for (int k = 0; k < width; ++k) {
                 oss_mask_tmp << "1";
             }
-            oss_reaction_mirror << "\n  uint"
-                                << width
-                                << "_t "
-                                << field_arg_c
-                                << "="
-                                << "__mantis__values_"
-                                << i
-                                << "[1]&"
-                                << oss_mask_tmp.str()
-                                << ";";    
-            oss_reaction_mirror << "\n  __mantis__values_"
-                                << i
-                                << "[1]>>"
-                                << width
-                                << ";";                                          
+            if(forIng) {
+                oss_reaction_mirror << "\n  uint"
+                                    << width
+                                    << "_t "
+                                    << field_arg_c
+                                    << "="
+                                    << "__mantis__values_riSetArgs_"
+                                    << i
+                                    << "[1]&"
+                                    << oss_mask_tmp.str()
+                                    << ";";    
+                oss_reaction_mirror << "\n  __mantis__values_riSetArgs_"
+                                    << i
+                                    << "[1]>>"
+                                    << width
+                                    << ";";                   
+            } else {
+                oss_reaction_mirror << "\n  uint"
+                                    << width
+                                    << "_t "
+                                    << field_arg_c
+                                    << "="
+                                    << "__mantis__values_reSetArgs_"
+                                    << i
+                                    << "[1]&"
+                                    << oss_mask_tmp.str()
+                                    << ";";    
+                oss_reaction_mirror << "\n  __mantis__values_reSetArgs_"
+                                    << i
+                                    << "[1]>>"
+                                    << width
+                                    << ";";   
+            }                                       
         }
     }
 }
@@ -201,7 +223,11 @@ void mirrorRegisterArgForIng(std::vector<AstNode*> nodeArray, ostringstream& oss
         }
 
         // After all arg mirroring, flip mv
-        oss_reaction_mirror << "\n  __mantis__flip_mv;\n\n";
+        if(forIng) {
+            oss_reaction_mirror << "\n  __mantis__flip_mv_ing;\n\n";
+        } else {
+            oss_reaction_mirror << "\n  __mantis__flip_mv_egr;\n\n";
+        }
     } else {
         // Directly mirror the value to the correponding control plane array
         for (auto ra : reaction_args) {
@@ -254,54 +280,81 @@ void mirrorRegisterArgForIng(std::vector<AstNode*> nodeArray, ostringstream& oss
     // Before reaction logic, flip __vv from working copy for prepare phase
     if(forIng) {
         if(((unsigned int)iso_opt) & 0b10) {
-            oss_reaction_mirror << "\n  __mantis__flip_vv;\n\n";
-            // Note that we don't add __mantis__mbl_updated=1 as it is only triggered when
-            // there are entries actually triggered for execution
+            oss_reaction_mirror << "\n  __mantis__flip_vv_ing;\n\n";
+            // Note that __mantis__mbl_updated_ing=1 not appended as it is only triggered when
+            // there are entries actually prepared for execution
         }
+    } else {
+        if(((unsigned int)iso_opt) & 0b10) {
+            oss_reaction_mirror << "\n  __mantis__flip_vv_egr;\n\n";
+        }        
     }
 }
 
-void generateMacroXorVersionBits(ostringstream& oss_reaction_mirror, ostringstream& oss_preprocessor, int iso_opt) {
+void generateMacroXorVersionBits(ostringstream& oss_reaction_mirror, ostringstream& oss_preprocessor, int ing_iso_opt, int egr_iso_opt) {
     // Remember the current version bit values for reaction and measurement
     // We always pack field args and use mantis_mv_bit to index the replicas
-    oss_reaction_mirror << "  static unsigned int __mantis__mv = 0;\n";
-    if(((unsigned int)iso_opt) & 0b1) {
+    oss_reaction_mirror << "  static unsigned int __mantis__mv_ing = 0;\n";
+    oss_reaction_mirror << "  static unsigned int __mantis__mv_egr = 0;\n";
+    if(((unsigned int)ing_iso_opt) & 0b1) {
         // Create macros for flip version bit
         oss_preprocessor << "\n#define "
-                        << "__mantis__flip_mv "
-                        << "__mantis__mv=__mantis__mv^0x1"
+                        << "__mantis__flip_mv_ing "
+                        << "__mantis__mv_ing=__mantis__mv_ing^0x1"
                         << "\n";        
     } 
-    if (((unsigned int)iso_opt) & 0b10) {
-        oss_reaction_mirror << "  static unsigned int __mantis__vv = 0x0;\n";
+    if (((unsigned int)ing_iso_opt) & 0b10) {
+        oss_reaction_mirror << "  static unsigned int __mantis__vv_ing = 0x0;\n";
         oss_preprocessor << "\n#define "
-                        << "__mantis__flip_vv "
-                        << "__mantis__vv=__mantis__vv^0x1"
+                        << "__mantis__flip_vv_ing "
+                        << "__mantis__vv_ing=__mantis__vv_ing^0x1"
                         << "\n";         
     }
+    if(((unsigned int)egr_iso_opt) & 0b1) {
+        oss_preprocessor << "\n#define "
+                        << "__mantis__flip_mv_egr "
+                        << "__mantis__mv_egr=__mantis__mv_egr^0x1"
+                        << "\n";        
+    } 
+    if (((unsigned int)egr_iso_opt) & 0b10) {
+        oss_reaction_mirror << "  static unsigned int __mantis__vv_egr = 0x0;\n";
+        oss_preprocessor << "\n#define "
+                        << "__mantis__flip_vv_egr "
+                        << "__mantis__vv_egr=__mantis__vv_egr^0x1"
+                        << "\n";         
+    }    
 }
 
 // Prepare helper vars and set mv gate bit
-void generateDialogueArgStart(ostringstream& oss_reaction_mirror, int isolation_opt) {
+void generateDialogueArgStart(ostringstream& oss_reaction_mirror, int ing_iso_opt, int egr_iso_opt) {
 
+    // Shared tmp variables
     oss_reaction_mirror << "  int __mantis__reg_flags=1;\n"
                        << "  int __mantis__value_count;\n"
                        << "  int __mantis__num_actually_read;\n"
                        << "  int __mantis__i;\n";
-
-    if(((unsigned int)isolation_opt) & 0b1) {
-        oss_reaction_mirror << "  __mantis__mbl_updated=1;\n"
+    // Take snapshots of ing/egr metrics
+    if(((unsigned int)ing_iso_opt) & 0b1) {
+        oss_reaction_mirror << "  __mantis__mbl_updated_ing=1;\n"
                            // Update data plane working copy
-                           << "\n  __mantis__flip_mv;\n"
-                           << "\n  __mantis__mod_vars;\n"
-                           << "\n  __mantis__flip_mv;\n"
-                           << "\n  __mantis__mbl_updated=0;\n";  
+                           << "\n  __mantis__flip_mv_ing;\n"
+                           << "\n  __mantis__mod_vars_ing;\n"
+                           << "\n  __mantis__flip_mv_ing;\n"
+                           << "\n  __mantis__mbl_updated_ing=0;\n";  
     }
+    if(((unsigned int)egr_iso_opt) & 0b1) {
+        oss_reaction_mirror << "  __mantis__mbl_updated_egr=1;\n"
+                           // Update data plane working copy
+                           << "\n  __mantis__flip_mv_egr;\n"
+                           << "\n  __mantis__mod_vars_egr;\n"
+                           << "\n  __mantis__flip_mv_egr;\n"
+                           << "\n  __mantis__mbl_updated_egr=0;\n";  
+    }    
 
 }
 
 // Synthesizing macros for non-mbl table manipulations
-// These operations are only used at prologue as no isolation provided
+// These operations should only be used at prologue as no isolation provided
 void generateMacroNonMblTable(std::vector<AstNode*> nodeArray, ostringstream& oss_preprocessor, string prefix_str) {
     // <TBL_MANIPULATION_SYNTAX> ::= <TBL_NAME>_<OPERATION_TYPE>(_[ACT_name])^{0,1}([ENTRY_INDEX], <ARGS>^{0,1})
     // <ARGS> ::= <MATCH_ARGS> <ACT_ARGS>
@@ -665,14 +718,13 @@ void generateMacroNonMblTable(std::vector<AstNode*> nodeArray, ostringstream& os
 }
 
 // For the user, same syntax as non-mbl table
-void generateMacroMblTable(std::vector<AstNode*> nodeArray, ostringstream& oss_preprocessor, string prefix_str, int iso_opt, ostringstream& oss_reaction_mirror) {
+void generateMacroMblTable(std::vector<AstNode*> nodeArray, ostringstream& oss_preprocessor, string prefix_str, int ing_iso_opt, int egr_iso_opt, ostringstream& oss_reaction_mirror) {
 
     // With isolation, we need an array indicating whether the handler is triggered in the dialogue for later mirroring
-    if(((unsigned int)iso_opt) & 0b10) {
+    if(((unsigned int)ing_iso_opt) & 0b10 || ((unsigned int)egr_iso_opt) & 0b10) {
         oss_reaction_mirror << "  static bool __mantis__indicator_hdls"
                             << "[" << std::to_string(kNumUserHdls) << "];\n";
     }
-
 
     ostringstream oss_macro_tmp;
     ostringstream oss_replace_tmp;
@@ -707,12 +759,20 @@ void generateMacroMblTable(std::vector<AstNode*> nodeArray, ostringstream& oss_p
                             << table_name
                             << "_table_delete"
                             << "(sess_hdl,pipe_mgr_dev_tgt.device_id,vv_shallow_hdls[2*(ARG_INDEX+"
-                            << std::to_string(kHandlerOffset)
-                            << ")+__mantis__vv]);\\\n"
-                            << kMantisNl
-                            << "\t"
-                            << "__mantis__mbl_updated=1;\\\n"
-                            << kMantisNl;
+                            << std::to_string(kHandlerOffset);
+            if(findTblInIng(table_name, nodeArray)) {
+                oss_replace_tmp << ")+__mantis__vv_ing]);\\\n"
+                                << kMantisNl
+                                << "\t"
+                                << "__mantis__mbl_updated_ing=1;\\\n"
+                                << kMantisNl; 
+            } else {
+                oss_replace_tmp << ")+__mantis__vv_egr]);\\\n"
+                                << kMantisNl
+                                << "\t"
+                                << "__mantis__mbl_updated_egr=1;\\\n"
+                                << kMantisNl;                 
+            }
             // Mirror macro, wrap it with conditionals and reset
             oss_preprocessor << "\n#define "
                             << "__mantis__mirror_"
@@ -805,15 +865,24 @@ void generateMacroMblTable(std::vector<AstNode*> nodeArray, ostringstream& oss_p
                         if(matchType==TableReadStmtNode::EXACT) {
                             // Mbl table was transformed to add exact match on vv
                             // If the match field is the newly extended __vv
-                            if(match_field_name.compare(string(kP4rIngMetadataName)+"_"+"__vv")==0) {
+                            if(findTblInIng(table_name, nodeArray) && match_field_name.compare(string(kP4rIngMetadataName)+"_"+"__vv")==0) {
                                 oss_replace_tmp << "\t"
                                             << table_name
                                             << "_match_spec_##ARG_INDEX."
                                             << match_field_name+"="
-                                            << "__mantis__vv"
+                                            << "__mantis__vv_ing"
                                             << ";\\\n"
                                             << kMantisNl;
                                 // Note programmar does not provide the argument
+                            } 
+                            else if(!findTblInIng(table_name, nodeArray) && match_field_name.compare(string(kP4rEgrMetadataName)+"_"+"__vv")==0) {
+                                oss_replace_tmp << "\t"
+                                            << table_name
+                                            << "_match_spec_##ARG_INDEX."
+                                            << match_field_name+"="
+                                            << "__mantis__vv_egr"
+                                            << ";\\\n"
+                                            << kMantisNl;
                             } else {
                                 oss_replace_tmp << "\t"
                                             << table_name
@@ -849,16 +918,24 @@ void generateMacroMblTable(std::vector<AstNode*> nodeArray, ostringstream& oss_p
                                             << kMantisNl;
                             arg_index++;
                         }
-                        if(matchType==TableReadStmtNode::EXACT) {
-                            if(match_field_name.compare(string(kP4rIngMetadataName)+"_"+"__vv")==0) {
+                        if(matchType==TableReadStmtNode::EXACT) { 
+                            if(findTblInIng(table_name, nodeArray) && match_field_name.compare(string(kP4rIngMetadataName)+"_"+"__vv")==0) {
                                 oss_replace_tmp << "\t"
                                             << table_name
                                             << "_match_spec_##ARG_INDEX."
                                             << match_field_name+"="
-                                            << "__mantis__vv"
+                                            << "__mantis__vv_ing"
                                             << ";\\\n"
                                             << kMantisNl;
-                                // Note programmar does not provide the argument
+                            } 
+                            else if(!findTblInIng(table_name, nodeArray) && match_field_name.compare(string(kP4rEgrMetadataName)+"_"+"__vv")==0) {
+                                oss_replace_tmp << "\t"
+                                            << table_name
+                                            << "_match_spec_##ARG_INDEX."
+                                            << match_field_name+"="
+                                            << "__mantis__vv_egr"
+                                            << ";\\\n"
+                                            << kMantisNl;
                             } else {
                                 oss_replace_tmp << "\t"
                                             << table_name
@@ -869,7 +946,7 @@ void generateMacroMblTable(std::vector<AstNode*> nodeArray, ostringstream& oss_p
                                             << kMantisNl; 
                                 oss_macro_tmp << (",ARG_"+std::to_string(arg_index));
                                 arg_index++;
-                            }                                
+                            }                                                           
                         }
                     }
                 }
@@ -927,12 +1004,20 @@ void generateMacroMblTable(std::vector<AstNode*> nodeArray, ostringstream& oss_p
                                 << "__mantis__add_"
                                 << action_name
                                 << "_action_spec_##ARG_INDEX,&vv_shallow_hdls[2*(ARG_INDEX+"
-                                << std::to_string(kHandlerOffset)
-                                << ")+__mantis__vv]);\\\n"
-                                << kMantisNl
-                                << "\t"
-                                << "__mantis__mbl_updated=1;\\\n"
-                                << kMantisNl;
+                                << std::to_string(kHandlerOffset);
+                if(findTblInIng(table_name, nodeArray)) {
+                    oss_replace_tmp << ")+__mantis__vv_ing]);\\\n"
+                                    << kMantisNl
+                                    << "\t"
+                                    << "__mantis__mbl_updated_ing=1;\\\n"
+                                    << kMantisNl;
+                } else {
+                    oss_replace_tmp << ")+__mantis__vv_egr]);\\\n"
+                                    << kMantisNl
+                                    << "\t"
+                                    << "__mantis__mbl_updated_egr=1;\\\n"
+                                    << kMantisNl;
+                }
 
                 // Mirror macro, wrap it with conditionals and reset
                 oss_preprocessor << "\n#define "
@@ -1017,15 +1102,27 @@ void generateMacroMblTable(std::vector<AstNode*> nodeArray, ostringstream& oss_p
                                 << "_table_modify_with_"
                                 << action_name
                                 << "(sess_hdl,pipe_mgr_dev_tgt.device_id,vv_shallow_hdls[2*(ARG_INDEX+"
-                                << std::to_string(kHandlerOffset)
-                                << ")+__mantis__vv],&"
-                                << "__mantis__mod_"
-                                << action_name
-                                << "_action_spec_##ARG_INDEX);\\\n"
-                                << kMantisNl
-                                << "\t"
-                                << "__mantis__mbl_updated=1;\\\n"
-                                << kMantisNl;
+                                << std::to_string(kHandlerOffset);
+                if(findTblInIng(table_name, nodeArray)) {
+                    oss_replace_tmp << ")+__mantis__vv_ing],&"
+                                    << "__mantis__mod_"
+                                    << action_name
+                                    << "_action_spec_##ARG_INDEX);\\\n"
+                                    << kMantisNl
+                                    << "\t"
+                                    << "__mantis__mbl_updated_ing=1;\\\n"
+                                    << kMantisNl;
+                } else {
+                    oss_replace_tmp << ")+__mantis__vv_egr],&"
+                                    << "__mantis__mod_"
+                                    << action_name
+                                    << "_action_spec_##ARG_INDEX);\\\n"
+                                    << kMantisNl
+                                    << "\t"
+                                    << "__mantis__mbl_updated_egr=1;\\\n"
+                                    << kMantisNl;
+                }
+                                
 
                 // Mirror macro, wrap it with conditionals and reset
                 oss_preprocessor << "\n#define "
@@ -1067,78 +1164,100 @@ void generateMacroMblTable(std::vector<AstNode*> nodeArray, ostringstream& oss_p
 
 }
 
-// Generate mantis-syntax single mbl mod macros and __mantis__add_vars, __mantis__mod_vars
-void generateMacroInitMbls(std::vector<AstNode*> nodeArray, ostringstream& oss_mbl_init, ostringstream& oss_reaction_mirror, 
-                             ostringstream& oss_preprocessor, int num_mbls, int iso_opt, string prefix_str) {
+// Generate mantis-syntax single mbl mod macros and __mantis__add_vars_ing, __mantis__mod_vars_ing, __mantis__add_vars_egr, __mantis__mod_vars_egr
+void generateMacroInitMblsForIng(std::vector<AstNode*> nodeArray, unordered_map<string, int>* mblUsages, ostringstream& oss_mbl_init, ostringstream& oss_reaction_mirror, 
+                             ostringstream& oss_preprocessor, int num_mbls, int iso_opt, string prefix_str, bool forIng) {
 
+    // Both the same for monolithic master init table (even with update isolation)
     ostringstream oss_replace_mantis_add_vars;
-    oss_mbl_init << "  int __mantis__mbl_updated=0;\n";
-
-    // Same as oss_replace_mantis_add_vars for monolithic master init table (even with update isolation)
     ostringstream oss_replace_mantis_mod_vars;
-    oss_reaction_mirror << "  int __mantis__mbl_updated=0;\n";
 
-    oss_replace_mantis_add_vars << "if(__mantis__mbl_updated==1) {\\\n"
-                                << kMantisNl;
-    oss_replace_mantis_mod_vars << "if(__mantis__mbl_updated==1) {\\\n"
-                                << kMantisNl;
+    string p4rInitActionName;
+    int initEntryHandlerIndex;
+
+    string mv;
+    string vv;
+
+    if(forIng) {
+        oss_mbl_init << "  int __mantis__mbl_updated_ing=0;\n";
+        oss_reaction_mirror << "  int __mantis__mbl_updated_ing=0;\n";
+        oss_replace_mantis_add_vars << "if(__mantis__mbl_updated_ing==1) {\\\n"
+                                    << kMantisNl;
+        oss_replace_mantis_mod_vars << "if(__mantis__mbl_updated_ing==1) {\\\n"
+                                    << kMantisNl;       
+        p4rInitActionName = string(kP4rIngInitAction);
+        initEntryHandlerIndex = kIngInitEntryHandlerIndex;
+        mv =  "__mantis__mv_ing";
+        vv =  "__mantis__vv_ing";
+    } else {
+        oss_mbl_init << "  int __mantis__mbl_updated_egr=0;\n";
+        oss_reaction_mirror << "  int __mantis__mbl_updated_egr=0;\n";
+        oss_replace_mantis_add_vars << "if(__mantis__mbl_updated_egr==1) {\\\n"
+                                    << kMantisNl;
+        oss_replace_mantis_mod_vars << "if(__mantis__mbl_updated_egr==1) {\\\n"
+                                    << kMantisNl;  
+        p4rInitActionName = string(kP4rEgrInitAction);   
+        initEntryHandlerIndex = kEgrInitEntryHandlerIndex;
+        mv =  "__mantis__mv_egr";
+        vv =  "__mantis__vv_egr";
+    }
 
     // num_mbls includes version bits as well
     if(num_mbls!=0) {
         // Declare p4r_init action variable
-        // Here the conditional excludes the version bits
         oss_replace_mantis_add_vars << "\t"
                                     << prefix_str
-                                    << kP4rIngInitAction
+                                    << p4rInitActionName
                                     << "_"
                                     << kActionSuffixStr
                                     << " "
-                                    << kP4rIngInitAction
+                                    << p4rInitActionName
                                     << ";\\\n"
                                     << kMantisNl;
 
         oss_replace_mantis_mod_vars << "\t"
                                     << prefix_str
-                                    << kP4rIngInitAction
+                                    << p4rInitActionName
                                     << "_"
                                     << kActionSuffixStr
                                     << " "
-                                    << kP4rIngInitAction
+                                    << p4rInitActionName
                                     << ";\\\n"
                                     << kMantisNl;                                    
     }
+
     // Initialize version bits
     if(((unsigned int)iso_opt) & 0b1) {
-        oss_mbl_init << "  unsigned int __mantis__mv = 0x0;\n";
+        oss_mbl_init << "  unsigned int "<< mv << " = 0x0;\n";
 
         oss_replace_mantis_add_vars << "\t"
-                                    << kP4rIngInitAction
+                                    << p4rInitActionName
                                     << ".action___mv"
-                                    << "=__mantis__mv"
+                                    << "=" << mv
                                     << ";\\\n"
                                     << kMantisNl;  
                                     
         oss_replace_mantis_mod_vars << "\t"
-                                    << kP4rIngInitAction
+                                    << p4rInitActionName
                                     << ".action___mv"
-                                    << "=__mantis__mv"
+                                    << "=" << mv
                                     << ";\\\n"
                                     << kMantisNl;
     } 
     if(((unsigned int)iso_opt) & 0b10) {
-        oss_mbl_init << "  unsigned int __mantis__vv = 0x0;\n";
+        oss_mbl_init << "  unsigned int " << vv << " = 0x0;\n";
 
         oss_replace_mantis_add_vars << "\t"
-                                    << kP4rIngInitAction
+                                    << p4rInitActionName
                                     << ".action___vv"
-                                    << "=__mantis__vv"
+                                    << "=" << vv
                                     << ";\\\n"
                                     << kMantisNl;
 
         oss_replace_mantis_mod_vars << "\t"
-                                    << kP4rIngInitAction
+                                    << p4rInitActionName
                                     << ".action___vv"
-                                    << "=__mantis__vv"
+                                    << "=" << vv
                                     << ";\\\n"
                                     << kMantisNl;                                    
     }   
@@ -1151,8 +1270,15 @@ void generateMacroInitMbls(std::vector<AstNode*> nodeArray, ostringstream& oss_m
             auto v = dynamic_cast<P4RMalleableValueNode*>(n);
             string var_name = *v->name_->word_;
 
+            if(forIng && mblUsages->at(var_name)==USAGE::EGRESS) {
+                continue;
+            } 
+            if(!forIng && mblUsages->at(var_name)==USAGE::INGRESS) {
+                continue;
+            }             
+
             oss_replace_mantis_add_vars << "\t"
-                                        << kP4rIngInitAction
+                                        << p4rInitActionName
                                         << ".action_p__"
                                         << var_name
                                         << "=__mantis__"
@@ -1160,7 +1286,7 @@ void generateMacroInitMbls(std::vector<AstNode*> nodeArray, ostringstream& oss_m
                                         << ";\\\n"
                                         << kMantisNl;
             oss_replace_mantis_mod_vars << "\t"
-                                        << kP4rIngInitAction
+                                        << p4rInitActionName
                                         << ".action_p__"
                                         << var_name
                                         << "=__mantis__"
@@ -1191,25 +1317,65 @@ void generateMacroInitMbls(std::vector<AstNode*> nodeArray, ostringstream& oss_m
                               << ");\n";
 
             oss_preprocessor << "\n#define ";
-            oss_preprocessor << "__mantis__mod_var_"
-                             << var_name
-                             << "("
-                             << "var_value)"
-                             << " __mantis__"
-                             << var_name
-                             << "="
-                             << "var_value"
-                             << ";\\\n"
-                             << kMantisNl
-                             << "\t__mantis__mbl_updated=1;"
-                             << kMantisNl;  
+            // var used in ing
+            if(mblUsages->at(var_name)==USAGE::INGRESS) {
+                oss_preprocessor << "__mantis__mod_var_"
+                                 << var_name
+                                 << "("
+                                 << "var_value)"
+                                 << " __mantis__"
+                                 << var_name
+                                 << "="
+                                 << "var_value"
+                                 << ";\\\n"
+                                 << kMantisNl
+                                 << "\t__mantis__mbl_updated_ing=1;"
+                                 << kMantisNl;  
+            } else if (mblUsages->at(var_name)==USAGE::EGRESS) {
+                oss_preprocessor << "__mantis__mod_var_"
+                                 << var_name
+                                 << "("
+                                 << "var_value)"
+                                 << " __mantis__"
+                                 << var_name
+                                 << "="
+                                 << "var_value"
+                                 << ";\\\n"
+                                 << kMantisNl
+                                 << "\t__mantis__mbl_updated_egr=1;"
+                                 << kMantisNl;  
+            } else if (mblUsages->at(var_name)==USAGE::BOTH) {
+                oss_preprocessor << "__mantis__mod_var_"
+                                 << var_name
+                                 << "("
+                                 << "var_value)"
+                                 << " __mantis__"
+                                 << var_name
+                                 << "="
+                                 << "var_value"
+                                 << ";\\\n"
+                                 << kMantisNl
+                                 << "\t__mantis__mbl_updated_ing=1;\\\n"
+                                 << kMantisNl
+                                 << "\t__mantis__mbl_updated_egr=1;"
+                                 << kMantisNl;
+            } else {
+                PANIC("Invalid usage of %s\n", var_name.c_str());
+            }
         } else if (typeContains(n, "P4RMalleableFieldNode")) {
             auto v = dynamic_cast<P4RMalleableFieldNode*>(n);
             string var_name = *v->name_->word_;
 
+            if(forIng && mblUsages->at(var_name)==USAGE::EGRESS) {
+                continue;
+            } 
+            if(!forIng && mblUsages->at(var_name)==USAGE::INGRESS) {
+                continue;
+            }
+
             std::replace(var_name.begin(), var_name.end(), '.', '_');
             oss_replace_mantis_add_vars << "\t"
-                                        << kP4rIngInitAction
+                                        << p4rInitActionName
                                         << ".action_p__"
                                         << var_name
                                         << "=__mantis__"
@@ -1217,7 +1383,7 @@ void generateMacroInitMbls(std::vector<AstNode*> nodeArray, ostringstream& oss_m
                                         << ";\\\n"
                                         << kMantisNl;            
             oss_replace_mantis_mod_vars << "\t"
-                                        << kP4rIngInitAction
+                                        << p4rInitActionName
                                         << ".action_p__"
                                         << var_name
                                         << "=__mantis__"
@@ -1253,226 +1419,313 @@ void generateMacroInitMbls(std::vector<AstNode*> nodeArray, ostringstream& oss_m
                 oss_preprocessor << "\n#define ";
                 string tmp_str = tmp_alt->toString();
                 std::replace(tmp_str.begin(), tmp_str.end(), '.', '_');
-                oss_preprocessor << "  __mantis__mod_var_"
-                                 << var_name
-                                 << "_"
-                                 << tmp_str
-                                 << " __mantis__"
-                                 << var_name
-                                 << "="
-                                 << std::to_string(v->mapAltToInt(tmp_alt->toString()))
-                                 << ";\\\n"
-                                 << kMantisNl
-                                 << "\t__mantis__mbl_updated=1;"
-                                 << kMantisNl;
+                if(mblUsages->at(var_name)==USAGE::INGRESS) {
+                    oss_preprocessor << "  __mantis__mod_var_"
+                                     << var_name
+                                     << "_"
+                                     << tmp_str
+                                     << " __mantis__"
+                                     << var_name
+                                     << "="
+                                     << std::to_string(v->mapAltToInt(tmp_alt->toString()))
+                                     << ";\\\n"
+                                     << kMantisNl
+                                     << "\t__mantis__mbl_updated_ing=1;"
+                                     << kMantisNl;
+                } else if (mblUsages->at(var_name)==USAGE::EGRESS) {
+                    oss_preprocessor << "  __mantis__mod_var_"
+                                     << var_name
+                                     << "_"
+                                     << tmp_str
+                                     << " __mantis__"
+                                     << var_name
+                                     << "="
+                                     << std::to_string(v->mapAltToInt(tmp_alt->toString()))
+                                     << ";\\\n"
+                                     << kMantisNl
+                                     << "\t__mantis__mbl_updated_egr=1;"
+                                     << kMantisNl;
+                } else if (mblUsages->at(var_name)==USAGE::BOTH) {
+                    oss_preprocessor << "  __mantis__mod_var_"
+                                     << var_name
+                                     << "_"
+                                     << tmp_str
+                                     << " __mantis__"
+                                     << var_name
+                                     << "="
+                                     << std::to_string(v->mapAltToInt(tmp_alt->toString()))
+                                     << ";\\\n"
+                                     << kMantisNl
+                                     << "\t__mantis__mbl_updated_ing=1;\\\n"
+                                     << kMantisNl
+                                     << "\t__mantis__mbl_updated_egr=1;"
+                                     << kMantisNl;
+                } else {
+                    PANIC("Invalid usage of %s\n", var_name.c_str());
+                }
             }
         }
     }
 
     // Init table is always there
-    oss_replace_mantis_add_vars << "\t__mantis__status_tmp="
-                                << prefix_str
-                                << "__tiSetVars_set_default_action_"
-                                << kP4rIngInitAction
-                                << "(sess_hdl, pipe_mgr_dev_tgt, ";
+    if(forIng) {
+        oss_replace_mantis_add_vars << "\t__mantis__status_tmp="
+                                    << prefix_str
+                                    << "__tiSetVars_set_default_action_"
+                                    << p4rInitActionName
+                                    << "(sess_hdl, pipe_mgr_dev_tgt, ";
+    } else {
+        oss_replace_mantis_add_vars << "\t__mantis__status_tmp="
+                                    << prefix_str
+                                    << "__teSetVars_set_default_action_"
+                                    << p4rInitActionName
+                                    << "(sess_hdl, pipe_mgr_dev_tgt, ";
+    }
+
     if(num_mbls!=0) {
         oss_replace_mantis_add_vars << "&"
-                                    << kP4rIngInitAction
+                                    << p4rInitActionName
                                     << ", ";
     }
     oss_replace_mantis_add_vars << "&user_hdls["
-                                << std::to_string(kInitEntryHandlerIndex)
+                                << std::to_string(initEntryHandlerIndex)
                                 << "]);\\\n"
                                 << kMantisNl;
-    // Define the macro mantis_add_vars                            
-    oss_preprocessor << "\n#define "
-                     << "__mantis__add_vars "
-                     << oss_replace_mantis_add_vars.str()
-                     << "\t"
-                     << kErrorCheckStr
-                     << " }";
+    // Define the macro mantis_add_vars     
+    if(forIng) {
+        oss_preprocessor << "\n#define "
+                         << "__mantis__add_vars_ing "
+                         << oss_replace_mantis_add_vars.str()
+                         << "\t"
+                         << kErrorCheckStr
+                         << " }";
+        oss_replace_mantis_mod_vars << "\t__mantis__status_tmp="
+                                    << prefix_str
+                                    << "__tiSetVars_set_default_action_"
+                                    << p4rInitActionName
+                                    << "(sess_hdl, pipe_mgr_dev_tgt, ";                         
+    } else {
+        oss_preprocessor << "\n#define "
+                         << "__mantis__add_vars_egr "
+                         << oss_replace_mantis_add_vars.str()
+                         << "\t"
+                         << kErrorCheckStr
+                         << " }";
+        oss_replace_mantis_mod_vars << "\t__mantis__status_tmp="
+                                    << prefix_str
+                                    << "__teSetVars_set_default_action_"
+                                    << p4rInitActionName
+                                    << "(sess_hdl, pipe_mgr_dev_tgt, ";                   
+    }                   
 
-    oss_replace_mantis_mod_vars << "\t__mantis__status_tmp="
-                                << prefix_str
-                                << "__tiSetVars_set_default_action_"
-                                << kP4rIngInitAction
-                                << "(sess_hdl, pipe_mgr_dev_tgt, ";
+
     if(num_mbls!=0) {
         oss_replace_mantis_mod_vars << "&"
-                                    << kP4rIngInitAction
+                                    << p4rInitActionName
                                     << ", ";
     }                                
     oss_replace_mantis_mod_vars << "&user_hdls["
-                                << std::to_string(kInitEntryHandlerIndex)
+                                << std::to_string(initEntryHandlerIndex)
                                 << "]);\\\n"
                                 << kMantisNl;
-    oss_preprocessor << "\n#define "
-                     << "__mantis__mod_vars "
-                     << oss_replace_mantis_mod_vars.str()
-                     << "\t"
-                     << kErrorCheckStr
-                     << " }\n";
-
+    if(forIng) {
+        oss_preprocessor << "\n#define "
+                         << "__mantis__mod_vars_ing "
+                         << oss_replace_mantis_mod_vars.str()
+                         << "\t"
+                         << kErrorCheckStr
+                         << " }\n";
+    } else {
+        oss_preprocessor << "\n#define "
+                         << "__mantis__mod_vars_egr "
+                         << oss_replace_mantis_mod_vars.str()
+                         << "\t"
+                         << kErrorCheckStr
+                         << " }\n";
+    }                             
 }
 
-void generatePrologueEnd(std::vector<AstNode*> nodeArray, ostringstream& oss_init_end, int ing_iso_opt) {
-    oss_init_end << "  __mantis__add_vars;\n";
-    // Mirror mbl table entries
+void generatePrologueEnd(std::vector<AstNode*> nodeArray, ostringstream& oss_init_end, int ing_iso_opt, int egr_iso_opt) {
+
+    oss_init_end << "  __mantis__add_vars_ing;\n";
+    oss_init_end << "  __mantis__add_vars_egr;\n";
+
+    // Flip __vv to point to shallow copy
     if(((unsigned int)ing_iso_opt) & 0b10) {
-        // Flip __vv to point to shallow copy
-        oss_init_end << "\n  __mantis__flip_vv;\n\n";
-
-        P4RInitBlockNode * init_node = findInitBlock(nodeArray);
-        string p4r_init_user_str = "";
-        if (init_node != 0) {
-            p4r_init_user_str = init_node->body_->toString();
-        }
-
-        for (auto node : nodeArray) {
-            // For each mbl table
-            if(typeContains(node, "P4RMalleableTableNode")) {
-                TableNode* table = dynamic_cast<P4RMalleableTableNode*>(node)->table_;
-                string table_name = *(table->name_->word_);
-
-                TableActionStmtsNode* actions = table->actions_;
-
-                // Mbl tables are always with With matches (at least match on __vv)
-                // For each action
-                for (TableActionStmtNode* tas : *actions->list_) {
-                    string action_name = *tas->name_->word_;
-
-                    string str_prepare_macro_func;
-                    string str_mirror_macro_func;
-
-                    std::smatch result;
-
-                    // Construct match regrex for add
-                    str_prepare_macro_func = table_name + "_add_" + action_name;
-                    std::regex e_add (str_prepare_macro_func+"\\s*\\("+"([^\\)]*)"+"\\)");   // matches words beginning by "sub"
-
-                    // Stop after first match
-                    while (std::regex_search (p4r_init_user_str, result, e_add)) {
-                        
-                        str_prepare_macro_func = result[0];
-                        str_mirror_macro_func = "__mantis__mirror_" + str_prepare_macro_func;
-                        // Call corresponding mirror macros
-                        oss_init_end << "\n  "
-                                            << str_mirror_macro_func
-                                            << ";\n\n";
-
-                        // Search remaining string of p4r_reaction_user_str
-                        p4r_init_user_str = result.suffix().str();
-                    }
-                    // Mod
-                    str_prepare_macro_func = table_name + "_mod_" + action_name;
-                    std::regex e_mod (str_prepare_macro_func+"\\s*\\("+"([^\\)]*)"+"\\)");   // matches words beginning by "sub"
-                    while (std::regex_search (p4r_init_user_str, result, e_mod)) {
-                        str_prepare_macro_func = result[0];
-                        str_mirror_macro_func = "__mantis__mirror_" + str_prepare_macro_func;
-                        oss_init_end << "\n  "
-                                            << str_mirror_macro_func
-                                            << ";\n\n";
-                        p4r_init_user_str = result.suffix().str();
-                    }
-                    // Del
-                    str_prepare_macro_func = table_name + "_del_" + action_name;
-                    std::regex e_del (str_prepare_macro_func+"\\s*\\("+"([^\\)]*)"+"\\)");   // matches words beginning by "sub"
-                    while (std::regex_search (p4r_init_user_str, result, e_del)) {
-                        str_prepare_macro_func = result[0];
-                        str_mirror_macro_func = "__mantis__mirror_" + str_prepare_macro_func;
-                        oss_init_end << "\n  "
-                                    << str_mirror_macro_func
-                                    << ";\n\n";
-                        p4r_init_user_str = result.suffix().str();
-                    }
-                }   
-            }
-        }
-        // Point __vv back to working copy for next dialogue
-        oss_init_end<< "\n  __mantis__flip_vv;\n\n";
+        oss_init_end << "\n  __mantis__flip_vv_ing;\n\n";
+    }
+    if(((unsigned int)egr_iso_opt) & 0b10) {
+        oss_init_end << "\n  __mantis__flip_vv_egr;\n\n";
     }    
 
+    P4RInitBlockNode * init_node = findInitBlock(nodeArray);
+    string p4r_init_user_str = "";
+    if (init_node != 0) {
+        p4r_init_user_str = init_node->body_->toString();
+    }
+
+    for (auto node : nodeArray) {
+        // For each mbl table
+        if(typeContains(node, "P4RMalleableTableNode")) {
+            TableNode* table = dynamic_cast<P4RMalleableTableNode*>(node)->table_;
+            string table_name = *(table->name_->word_);
+
+            // Whenever mbl table(s) present, isolation required
+
+            TableActionStmtsNode* actions = table->actions_;
+
+            // Mbl tables are always with With matches (at least match on __vv)
+            // For each action
+            for (TableActionStmtNode* tas : *actions->list_) {
+                string action_name = *tas->name_->word_;
+
+                string str_prepare_macro_func;
+                string str_mirror_macro_func;
+
+                std::smatch result;
+
+                // Construct match regrex for add
+                str_prepare_macro_func = table_name + "_add_" + action_name;
+                std::regex e_add (str_prepare_macro_func+"\\s*\\("+"([^\\)]*)"+"\\)");   // matches words beginning by "sub"
+
+                // Stop after first match
+                while (std::regex_search (p4r_init_user_str, result, e_add)) {
+                    
+                    str_prepare_macro_func = result[0];
+                    str_mirror_macro_func = "__mantis__mirror_" + str_prepare_macro_func;
+                    // Call corresponding mirror macros
+                    oss_init_end << "\n  "
+                                        << str_mirror_macro_func
+                                        << ";\n\n";
+
+                    // Search remaining string of p4r_reaction_user_str
+                    p4r_init_user_str = result.suffix().str();
+                }
+                // Mod
+                str_prepare_macro_func = table_name + "_mod_" + action_name;
+                std::regex e_mod (str_prepare_macro_func+"\\s*\\("+"([^\\)]*)"+"\\)");   // matches words beginning by "sub"
+                while (std::regex_search (p4r_init_user_str, result, e_mod)) {
+                    str_prepare_macro_func = result[0];
+                    str_mirror_macro_func = "__mantis__mirror_" + str_prepare_macro_func;
+                    oss_init_end << "\n  "
+                                        << str_mirror_macro_func
+                                        << ";\n\n";
+                    p4r_init_user_str = result.suffix().str();
+                }
+                // Del
+                str_prepare_macro_func = table_name + "_del_" + action_name;
+                std::regex e_del (str_prepare_macro_func+"\\s*\\("+"([^\\)]*)"+"\\)");   // matches words beginning by "sub"
+                while (std::regex_search (p4r_init_user_str, result, e_del)) {
+                    str_prepare_macro_func = result[0];
+                    str_mirror_macro_func = "__mantis__mirror_" + str_prepare_macro_func;
+                    oss_init_end << "\n  "
+                                << str_mirror_macro_func
+                                << ";\n\n";
+                    p4r_init_user_str = result.suffix().str();
+                }
+            }   
+        }
+    }
+
+    // Point __vv back to working copy for dialogue
+    if(((unsigned int)ing_iso_opt) & 0b10) {
+        oss_init_end<< "\n  __mantis__flip_vv_ing;\n\n"; 
+    }
+    if(((unsigned int)egr_iso_opt) & 0b10) {
+        oss_init_end<< "\n  __mantis__flip_vv_egr;\n\n";
+    }  
 }
 
 
 void generateDialogueEnd(std::vector<AstNode*> nodeArray, ostringstream& oss_reaction_update, int ing_iso_opt, int egr_iso_opt) {
 
     // __vv points to shallow copy under isolation, now update version bit commit together with other mbls)
-    oss_reaction_update << "\n  __mantis__mod_vars;\n";
+    oss_reaction_update << "\n  __mantis__mod_vars_ing;\n";
+    oss_reaction_update << "\n  __mantis__mod_vars_egr;\n";
 
+    // Flip __vv to point to shallow copy
     if(((unsigned int)ing_iso_opt) & 0b10) {
-        // Flip __vv to point to shallow copy
-        oss_reaction_update << "\n  __mantis__flip_vv;\n\n";
+        oss_reaction_update << "\n  __mantis__flip_vv_ing;\n\n";
+    }
+    if(((unsigned int)egr_iso_opt) & 0b10) {
+        oss_reaction_update << "\n  __mantis__flip_vv_egr;\n\n";
+    }
 
-        // Under isolation, call mirror macros to mirror shallow copies for mbl table operations
-        // Get the reaction string and find all user macros
-        P4RReactionNode * react_node = findReaction(nodeArray);
-        string p4r_reaction_user_str = "";
-        if (react_node != 0) {
-            p4r_reaction_user_str = react_node->body_->toString();
+    // Under isolation, call mirror macros to mirror shallow copies for mbl table operations
+    // Get the reaction string and find all user macros
+    P4RReactionNode * react_node = findReaction(nodeArray);
+    string p4r_reaction_user_str = "";
+    if (react_node != 0) {
+        p4r_reaction_user_str = react_node->body_->toString();
+    }
+
+    // No need to check isolation opt and ing/egr, just mirror user-specified operations in prepare
+    for (auto node : nodeArray) {
+        // For each mbl table
+        if(typeContains(node, "P4RMalleableTableNode")) {
+            TableNode* table = dynamic_cast<P4RMalleableTableNode*>(node)->table_;
+            string table_name = *(table->name_->word_);
+
+            TableActionStmtsNode* actions = table->actions_;
+
+            // Mbl tables are always with With matches (at least match on __vv)
+            // For each action
+            for (TableActionStmtNode* tas : *actions->list_) {
+                string action_name = *tas->name_->word_;
+
+                string str_prepare_macro_func;
+                string str_mirror_macro_func;
+
+                std::smatch result;
+
+                // Construct match regrex for add
+                str_prepare_macro_func = table_name + "_add_" + action_name;
+                std::regex e_add (str_prepare_macro_func+"\\s*\\("+"([^\\)]*)"+"\\)");   // matches words beginning by "sub"
+
+                // Stop after first match
+                while (std::regex_search (p4r_reaction_user_str, result, e_add)) {
+                    
+                    str_prepare_macro_func = result[0];
+                    str_mirror_macro_func = "__mantis__mirror_" + str_prepare_macro_func;
+                    // Call corresponding mirror macros
+                    oss_reaction_update << "\n  "
+                                        << str_mirror_macro_func
+                                        << ";\n\n";
+
+                    // Search remaining string of p4r_reaction_user_str
+                    p4r_reaction_user_str = result.suffix().str();
+                }
+                // Mod
+                str_prepare_macro_func = table_name + "_mod_" + action_name;
+                std::regex e_mod (str_prepare_macro_func+"\\s*\\("+"([^\\)]*)"+"\\)");   // matches words beginning by "sub"
+                while (std::regex_search (p4r_reaction_user_str, result, e_mod)) {
+                    str_prepare_macro_func = result[0];
+                    str_mirror_macro_func = "__mantis__mirror_" + str_prepare_macro_func;
+                    oss_reaction_update << "\n  "
+                                        << str_mirror_macro_func
+                                        << ";\n\n";
+                    p4r_reaction_user_str = result.suffix().str();
+                }
+                // Del
+                str_prepare_macro_func = table_name + "_del_" + action_name;
+                std::regex e_del (str_prepare_macro_func+"\\s*\\("+"([^\\)]*)"+"\\)");   // matches words beginning by "sub"
+                while (std::regex_search (p4r_reaction_user_str, result, e_del)) {
+                    str_prepare_macro_func = result[0];
+                    str_mirror_macro_func = "__mantis__mirror_" + str_prepare_macro_func;
+                    oss_reaction_update << "\n  "
+                                        << str_mirror_macro_func
+                                        << ";\n\n";
+                    p4r_reaction_user_str = result.suffix().str();
+                }
+            }   
         }
+    }
 
-        for (auto node : nodeArray) {
-            // For each mbl table
-            if(typeContains(node, "P4RMalleableTableNode")) {
-                TableNode* table = dynamic_cast<P4RMalleableTableNode*>(node)->table_;
-                string table_name = *(table->name_->word_);
-
-                TableActionStmtsNode* actions = table->actions_;
-
-                // Mbl tables are always with With matches (at least match on __vv)
-                // For each action
-                for (TableActionStmtNode* tas : *actions->list_) {
-                    string action_name = *tas->name_->word_;
-
-                    string str_prepare_macro_func;
-                    string str_mirror_macro_func;
-
-                    std::smatch result;
-
-                    // Construct match regrex for add
-                    str_prepare_macro_func = table_name + "_add_" + action_name;
-                    std::regex e_add (str_prepare_macro_func+"\\s*\\("+"([^\\)]*)"+"\\)");   // matches words beginning by "sub"
-
-                    // Stop after first match
-                    while (std::regex_search (p4r_reaction_user_str, result, e_add)) {
-                        
-                        str_prepare_macro_func = result[0];
-                        str_mirror_macro_func = "__mantis__mirror_" + str_prepare_macro_func;
-                        // Call corresponding mirror macros
-                        oss_reaction_update << "\n  "
-                                            << str_mirror_macro_func
-                                            << ";\n\n";
-
-                        // Search remaining string of p4r_reaction_user_str
-                        p4r_reaction_user_str = result.suffix().str();
-                    }
-                    // Mod
-                    str_prepare_macro_func = table_name + "_mod_" + action_name;
-                    std::regex e_mod (str_prepare_macro_func+"\\s*\\("+"([^\\)]*)"+"\\)");   // matches words beginning by "sub"
-                    while (std::regex_search (p4r_reaction_user_str, result, e_mod)) {
-                        str_prepare_macro_func = result[0];
-                        str_mirror_macro_func = "__mantis__mirror_" + str_prepare_macro_func;
-                        oss_reaction_update << "\n  "
-                                            << str_mirror_macro_func
-                                            << ";\n\n";
-                        p4r_reaction_user_str = result.suffix().str();
-                    }
-                    // Del
-                    str_prepare_macro_func = table_name + "_del_" + action_name;
-                    std::regex e_del (str_prepare_macro_func+"\\s*\\("+"([^\\)]*)"+"\\)");   // matches words beginning by "sub"
-                    while (std::regex_search (p4r_reaction_user_str, result, e_del)) {
-                        str_prepare_macro_func = result[0];
-                        str_mirror_macro_func = "__mantis__mirror_" + str_prepare_macro_func;
-                        oss_reaction_update << "\n  "
-                                            << str_mirror_macro_func
-                                            << ";\n\n";
-                        p4r_reaction_user_str = result.suffix().str();
-                    }
-                }   
-            }
-        }
-        // Point __vv back to working copy for next dialogue
-        oss_reaction_update << "\n  __mantis__flip_vv;\n\n";
+    // Point __vv back to working copy for next dialogue
+    if(((unsigned int)ing_iso_opt) & 0b10) {
+        oss_reaction_update << "\n  __mantis__flip_vv_ing;\n\n";
+    }
+    if(((unsigned int)egr_iso_opt) & 0b10) {
+        oss_reaction_update << "\n  __mantis__flip_vv_egr;\n\n";
     }
 }

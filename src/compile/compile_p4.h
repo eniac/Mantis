@@ -26,25 +26,23 @@ typedef pair<vector<ReactionArgSize>, int /* size */> ReactionArgBin;
 
 void transformPragma(vector<AstNode*>* astNodes);
 
-int inferIngIsolationOpt(vector<AstNode*>* astNodes);
-
-int inferEgrIsolationOpt(vector<AstNode*>* astNodes);
+int inferIsoOptForIng(vector<AstNode*>* astNodes, bool forIng);
 
 bool augmentIngress(vector<AstNode*>* astNodes);
 
 bool augmentEgress(vector<AstNode*>* astNodes);
 
-void transformTableWithRefRead(MblRefNode* ref, TableNode* table,
-                               const P4RMalleableFieldNode& malleable);
-
-void duplicateActions(MblRefNode* ref, ActionNode* action,
-                      vector<MblRefNode*>* mblRefs,
-                      vector<AstNode*>* nodeArray,
-                      const P4RMalleableFieldNode& malleable);
-
-void transformMalleableFieldRef(MblRefNode* ref, vector<MblRefNode*>* mblRefs,
-                               vector<AstNode*>* nodeArray,
-                               const P4RMalleableFieldNode& malleable);
+enum USAGE {
+    INGRESS = 0,
+    EGRESS = 1,
+    BOTH = 2
+};
+void findMalleableUsage(
+            vector<MblRefNode*> mblRefs,
+            const unordered_map<string, P4RMalleableValueNode*> mblValues,
+            const unordered_map<string, P4RMalleableFieldNode*> mblFields,
+            vector<AstNode*>* nodeArray,
+            unordered_map<string, int>* mblUsages);
 
 void transformMalleableRefs(
             vector<MblRefNode*>* mblRefs,
@@ -53,7 +51,7 @@ void transformMalleableRefs(
             vector<AstNode*>* nodeArray);
 
 void transformMalleableTables(
-            unordered_map<string, P4RMalleableTableNode*>* mblTables, int ing_iso_opt);
+            unordered_map<string, P4RMalleableTableNode*>* mblTables, vector<AstNode*> nodeArray, int ing_iso_opt, int egr_iso_opt);
 
 void generateExportControl(vector<AstNode*>* newNodes,
                            const vector<ReactionArgBin>& argBins, const vector<ReactionArgBin>& argBinsEgr);
@@ -100,19 +98,13 @@ void generateMetadata(vector<AstNode*>* newNodes,
                       int ing_iso_opt, int egr_iso_opt);
 
 // Generate a merged table that sets all malleables
-int generateIngInitTable(vector<AstNode*>* newNodes,
-                       const unordered_map<string,
-                                           P4RMalleableValueNode*>& mblValues,
-                       const unordered_map<string,
-                                           P4RMalleableFieldNode*>& mblFields,
-                       int ing_iso_opt);
-
-void generateEgrInitTable(vector<AstNode*>* newNodes,
-                       const unordered_map<string,
-                                           P4RMalleableValueNode*>& mblValues,
-                       const unordered_map<string,
-                                           P4RMalleableFieldNode*>& mblFields,
-                       int egr_iso_opt);
+int generateInitTableForIng(unordered_map<string, int>* mblUsages,
+                             vector<AstNode*>* newNodes,
+                             const unordered_map<string,
+                                                 P4RMalleableValueNode*>& mblValues,
+                             const unordered_map<string,
+                                                 P4RMalleableFieldNode*>& mblFields,
+                             int iso_opt, bool forIng);
 
 void generateSetvarControl(vector<AstNode*>* newNodes);
 

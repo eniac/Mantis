@@ -3,7 +3,7 @@
 ### Prerequisites
 
 * Flex, Bison, g++ (version >=4.9)
-* Barefoot SDE 9.0.0 (to further compile the generated malleable P4 code)
+* Barefoot SDE 9.0.0 (optional, to further compile the generated malleable P4 code to tofino)
 
 ### Contents
 
@@ -35,9 +35,9 @@ Arguments to the script are:
 
 - ```input_file```: file path for input p4r
 - ```-o```: optional flag to specify the target output directory, by default, the generated files will be at `out/` directory
-- ```-vv```: optional flag to view verbose output
+- ```-vv```: optional flag to view info/verbose output
 
-For example, to compile `examples/failover_tstamp.p4r` to the default `out/` directory:
+For example, to compile `examples/failover_tstamp.p4r` to the default `out/` directory with verbose flag:
 ```
-sudo ./compile_p4r.sh examples/failover_tstamp.p4r
+sudo ./compile_p4r.sh -vv examples/failover_tstamp.p4r
 ```
