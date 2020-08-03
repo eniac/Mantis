@@ -204,23 +204,16 @@ bool augmentEgress(vector<AstNode*>* astNodes) {
     return true;
 }
 
+// Current generic approach can be expensive in terms of TCAM usage (even when user uses exact match for the mbl field)
+// Alternatives:
+// 1. Use dynamic masking of exact match table (tofino feature)
+// 2. Match on a given-width helper meta data and in the preceeding table (extra table cost), assign corresponding values to it
 static void transformTableWithRefRead(MblRefNode* ref, TableNode* table,
                                const P4RMalleableFieldNode& variable) {
     auto readStmtsNode = dynamic_cast<TableReadStmtsNode*>(ref->parent_->parent_);
 
     // Assemble list of alts
     vector<FieldNode*> alts = findAllAlts(variable);
-
-    // Add exact match bit for the meta field of the variable
-    const string variableName = *ref->name_->word_;
-    ostringstream oss;
-    oss << kP4rIngMetadataName << "." << variableName << kP4rIndexSuffix;
-    if (!findTableReadStmt(*table, oss.str())) {
-        auto newReadStmtNode =
-            new TableReadStmtNode(TableReadStmtNode::EXACT,
-                                  new StrNode(new string(oss.str())));
-        table->reads_->push_back(newReadStmtNode);
-    }
 
     bool first = true;
     TableReadStmtNode::MatchType matchType;
@@ -242,8 +235,21 @@ static void transformTableWithRefRead(MblRefNode* ref, TableNode* table,
             readStmtsNode->push_back(newStmtNode);
         }
     }
+
+    // Add exact match bit for the meta field of the variable
+    const string variableName = *ref->name_->word_;
+    ostringstream oss;
+    oss << kP4rIngMetadataName << "." << variableName << kP4rIndexSuffix;
+    if (!findTableReadStmt(*table, oss.str())) {
+        auto newReadStmtNode =
+            new TableReadStmtNode(TableReadStmtNode::EXACT,
+                                  new StrNode(new string(oss.str())));
+        table->reads_->push_back(newReadStmtNode);
+    }    
 }
 
+// For small number of mbls and alts, specialized action approach avoids atomicity and extra table and possibily stage overhead
+// Even when multiple mbls are used, one typically splits the usage into separate tables
 static void duplicateActions(MblRefNode* ref, ActionNode* action,
                       vector<MblRefNode*>* mblRefs,
                       vector<AstNode*>* nodeArray,
@@ -598,7 +604,8 @@ void generateDupRegArgProg(vector<AstNode*>* newNodes,
                 oss.str(""); 
                 oss << "register " << reg->name_->toString() << kP4rRegReplicasSuffix0
                     << "{\n"
-                    << reg->body_->toString()
+                    << "  width : 64;\n"
+                    << "  instance_count : " << reg->instanceCount_ << ";\n"
                     << "}\n\n";
                 newNodes->push_back(new UnanchoredNode(new string(oss.str()),
                                                    new string("register"),
@@ -606,7 +613,8 @@ void generateDupRegArgProg(vector<AstNode*>* newNodes,
                 oss.str("");
                 oss << "register " << reg->name_->toString() << kP4rRegReplicasSuffix1
                     << "{\n"
-                    << reg->body_->toString()
+                    << "  width : 64;\n"
+                    << "  instance_count : " << reg->instanceCount_ << ";\n"
                     << "}\n\n";  
                 newNodes->push_back(new UnanchoredNode(new string(oss.str()),
                                                    new string("register"),
@@ -1354,7 +1362,7 @@ int generateInitTableForIng(unordered_map<string, int>* mblUsages,
                                 << ");\n";
     } 
 
-    // Typically, pragma stage 0 not required
+    // pragma stage 0 not required due to the match dependency of later tables matching on __vv, __mv, field_alt
     oss << "}\n\n"
         << "table "
         << p4rSetVarTblName

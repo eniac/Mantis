@@ -1,9 +1,22 @@
 ## P4R frontend
 
+### Description
+
+P4R language is a simple extension to P4 language to express fine-grained, serializable, and switch-local reactive behaviors.
+P4R frontend is a lightweight flex-bison based compiler that converts a P4R program into two files:
+
+1. a tofino-compatible P4-14 program targeting Wedge100BF-32X Tofino switch: `<p4r_prog_name>_mantis.p4`
+2. a prologue/dialogue implementation in C: `p4r.c`
+
+The compiler first transforms P4R code into a syntax tree, then *interprets* the syntax tree with multiple passes that adds new code and transforms the existing code.
+Finally, it dumps the P4, C from the syntax tree to separate output files.
+The frontend generated C file is later forwarded to C preprocessor to render the actual implementation.
+Later Mantis will generate and load the shared object and link it to the run time agent.
+
 ### Prerequisites
 
 * Flex, Bison, g++ (version >=4.9)
-* Barefoot SDE 9.0.0 (optional, to further compile the generated malleable P4 code to tofino)
+* Barefoot SDE (optional, if further compile the generated malleable P4 code to tofino ASIC or its simulation model or launch an agent on switch onboard CPU, the full implemention is tested on 9.0.0)
 
 ### Contents
 
@@ -14,22 +27,19 @@
 - `include/`: Header files included by bison parser
 - `frontend.l`: flex tokenizer
 - `frontend.y`: bison grammar parser
+- `agent/`: Mantis agent related
 
-### Description
+### How to Run
 
-P4R frontend is a lightweight Flex-bison based compiler that converts a P4R program into two files:
+Point `SDE` variable to the SDE root directory, e.g.,
 
-1. a tofino-compatible P4-14 program targeting Tofino P4-14: `<p4r_prog_name>_mantis.p4`
-2. a prologue/dialogue implementation in C: `p4r.c`
+```
+export SDE="/home/mantis/bf-sde-9.0.0"
+```
 
-The compiler first transforms P4R code into a syntax tree, then *interprets* the syntax tree with multiple passes that adds new code and transforms the existing code.
-Finally, it dumps the P4, C from the syntax tree to separate output files.
-The frontend generated C file is later forwarded to C preprocessor to render the actual implementation.
-Later Mantis will generate and load the shared object and link it to the run time agent.
+##### Frontend
 
-### How to run
-
-`compile_p4r.sh` wraps the usage of frontend `./compile_p4r.sh [-vv] [-o output_dir] input_file`.
+`compile_p4r.sh` wraps the usage of frontend: `./compile_p4r.sh [-vv] [-o output_dir] input_file`
 
 Arguments to the script are: 
 
@@ -37,7 +47,29 @@ Arguments to the script are:
 - ```-o```: optional flag to specify the target output directory, by default, the generated files will be at `out/` directory
 - ```-vv```: optional flag to view info/verbose output
 
-For example, to compile `examples/failover_tstamp.p4r` to the default `out/` directory with verbose flag:
+For example, to compile `examples/dos.p4r` to the default `out/` directory with verbose flag:
 ```
-sudo ./compile_p4r.sh -vv examples/failover_tstamp.p4r
+sudo -E ./compile_p4r.sh -vv examples/dos.p4r
 ```
+
+`compile_p4r.sh` also links the compilation of the malleable P4 code at the end, one could comment out the last section when a tofino switch/similator is not available.
+
+##### Agent
+
+* `launch.sh` wraps the launch of a Mantis controller instance: `sudo -E ./launch.sh <p4 prog name>`
+* `run.sh` wraps the generation of the shared object and the activation of reaction loops: `sudo -E ./run.sh <p4 prog name> <p4r.c path>`
+
+E.g., for `dos.p4r` example
+
+```
+# One terminal
+sudo -E ./launch.sh dos_mantis
+# Another terminal, AFTER the completion of ./launch.sh warming up, around 10s
+sudo -E ./run.sh dos_mantis ../out/p4r.c
+```
+
+### Further Questions
+
+For more details, please refer to the [paper](https://dl.acm.org/doi/10.1145/3387514.3405870).
+
+Feel free to post [issues](https://github.com/eniac/Mantis/issues) if any question arises.

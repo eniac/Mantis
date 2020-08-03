@@ -34,6 +34,12 @@ static int num_init_mbls_egr = -1;
 static vector<ReactionArgBin> global_ing_bins;
 static vector<ReactionArgBin> global_egr_bins;
 static unordered_map<string, int> mblUsages;
+static unordered_map<string, P4RMalleableValueNode*> mblValues;
+static unordered_map<string, P4RMalleableFieldNode*> mblFields;
+static unordered_map<string, P4RMalleableTableNode*> mblTables;
+static unordered_map<string, vector<string>> tableMbls;
+static unordered_map<string, vector<string>> actionMbls;
+
 
 vector<AstNode*> compileP4Code(vector<AstNode*>* nodeArray) {
 
@@ -42,15 +48,12 @@ vector<AstNode*> compileP4Code(vector<AstNode*>* nodeArray) {
 
     transformPragma(nodeArray);
 
-    unordered_map<string, P4RMalleableValueNode*> mblValues;
-    unordered_map<string, P4RMalleableFieldNode*> mblFields;
-    unordered_map<string, P4RMalleableTableNode*> mblTables;
     findAndRemoveMalleables(&mblValues, &mblFields, &mblTables, *nodeArray);
 
     vector<MblRefNode*> mblRefs;
     findMalleableRefs(&mblRefs, *nodeArray);
 
-    // Before transformation, find the corresponding usage
+    // Visitor pass to find the corresponding usage
     findMalleableUsage(mblRefs, mblValues, mblFields, nodeArray, &mblUsages);
 
     // Transform all references to mbls into references to the appropriate metadata
@@ -111,6 +114,8 @@ vector<UnanchoredNode *> compileCCode(std::vector<AstNode*> nodeArray, char * ou
     generateMacroNonMblTable(nodeArray, oss_preprocessor, prefix_str);
  
     generatePrologueEnd(nodeArray, oss_init_end, ing_iso_opt, egr_iso_opt);
+
+    generateHdlPool(nodeArray, oss_mbl_init, ing_iso_opt, egr_iso_opt);
 
     generateMacroInitMblsForIng(nodeArray, &mblUsages, oss_mbl_init, oss_reaction_mirror, oss_preprocessor, num_init_mbls_ing, ing_iso_opt, prefix_str, true);
     generateMacroInitMblsForIng(nodeArray, &mblUsages, oss_mbl_init, oss_reaction_mirror, oss_preprocessor, num_init_mbls_egr, egr_iso_opt, prefix_str, false);

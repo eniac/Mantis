@@ -101,6 +101,7 @@ AstNode* root;
 %token DOLLAR "$"
 %token L_BRACKET "["
 %token R_BRACKET "]"
+%token SLASH "/"
 
 // Parsed keywords
 %token P4R_MALLEABLE
@@ -796,22 +797,22 @@ bodyWord :
         node_array.push_back(rv);
         $$=rv;
     }
+    | integer {
+        AstNode* rv = new BodyWordNode(BodyWordNode::INTEGER, $1);
+        node_array.push_back(rv);
+        $$=rv;
+    }     
+    | specialChar {
+        AstNode* rv = new BodyWordNode(BodyWordNode::SPECIAL, $1);
+        node_array.push_back(rv);
+        $$=rv;
+    }       
     | STRING {
         AstNode* sv = new StrNode(new string($1));
         AstNode* rv = new BodyWordNode(BodyWordNode::STRING, sv);
         node_array.push_back(rv);
         $$=rv;
         free($1);
-    }
-    | integer {
-        AstNode* rv = new BodyWordNode(BodyWordNode::INTEGER, $1);
-        node_array.push_back(rv);
-        $$=rv;
-    }
-    | specialChar {
-        AstNode* rv = new BodyWordNode(BodyWordNode::SPECIAL, $1);
-        node_array.push_back(rv);
-        $$=rv;
     }
     // Better to set up blackbox declaration itself
     | REACTION_ARG_REG {
@@ -873,6 +874,11 @@ specialChar:
         $$=rv;}
     | WIDTH {
         string* newStr = new string("width");
+        AstNode* rv = new SpecialCharNode(newStr);
+        node_array.push_back(rv);
+        $$=rv;}
+    | SLASH {
+        string* newStr = new string("/");
         AstNode* rv = new SpecialCharNode(newStr);
         node_array.push_back(rv);
         $$=rv;}

@@ -109,7 +109,7 @@ init_block global_init {
   // Modify the entry 0 with another egress port
   ti_ipv4_forwarding_mod_ai_set_egr_port(0, 0x90);
   // Delete entry 0
-  ti_ipv4_forwarding_del(0);
+  ti_ipv4_forwarding_del_ai_set_egr_port(0);
 
   // Add new entry 1
   ti_ipv4_forwarding_add_ai_set_egr_port(1, 0xa01010e, 0xffffffff, 0xa010102, 0x0, 0x1, 0x90);

@@ -64,7 +64,7 @@ malleable field field_var {
   alts { hdr.foo, hdr.bar }
 }
 
-malleable table table_var {
+table table_var {
   reads { ${field_var} : exact; }
   actions { my_action; drop; }
 }
@@ -76,7 +76,7 @@ action my_action() {
 reaction my_reaction(reg re_qdepths[1:10]) {
   uint16_t current_max = 0, max_port = 0; 
   for (int i = 1; i <= 10; ++i) {
-    if (re_queue_qdepths[i] > current_max) {
+    if (re_qdepths[i] > current_max) {
       current_max = re_qdepths[i]; 
       max_port = i;
     }

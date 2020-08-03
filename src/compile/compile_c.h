@@ -44,6 +44,8 @@ void generateMacroMblTable(std::vector<AstNode*> nodeArray, ostringstream& oss_p
 void generateMacroInitMblsForIng(std::vector<AstNode*> nodeArray, unordered_map<string, int>* mblUsages, ostringstream& oss_variable_init, ostringstream& oss_reaction_start, 
                              ostringstream& oss_preprocessor, int num_vars, int iso_opt, string prefix_str, bool forIng);
 
+void generateHdlPool(std::vector<AstNode*> nodeArray, ostringstream& oss_mbl_init, int ing_iso_opt, int egr_iso_opt);
+
 void generatePrologueEnd(std::vector<AstNode*> nodeArray, ostringstream& oss_init_end, int ing_iso_opt, int egr_iso_opt);
 
 void generateDialogueEnd(std::vector<AstNode*> nodeArray, ostringstream& oss_reaction_end, int ing_iso_opt, int egr_iso_opt);

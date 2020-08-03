@@ -27,6 +27,8 @@
 
 using namespace std;
 
+static int num_max_alts = 1;
+
 // Process include/define macros in reaction
 void extractReactionMacro(std::vector<AstNode*> nodeArray, ostringstream& oss_preprocessor, string out_fn_base) {
     string cinclude_str = "";
@@ -212,9 +214,17 @@ void mirrorRegisterArgForIng(std::vector<AstNode*> nodeArray, ostringstream& oss
                 // Currently assuming non-64b reg to isolate
                 if(is_valid_tmp) {
                     if(ra->index2_) {
-                        oss_reaction_mirror << str(boost::format(kRegArgIsoMirrorT) % ra->arg_->toString() % std::to_string(target_reg->width_) % std::to_string(target_reg->instanceCount_) % prefix_str % std::to_string(std::stoi(ra->index2_->toString())));
+                        if(forIng) {
+                            oss_reaction_mirror << str(boost::format(kRegArgIsoMirrorT) % ra->arg_->toString() % std::to_string(target_reg->width_) % std::to_string(target_reg->instanceCount_) % prefix_str % std::to_string(std::stoi(ra->index2_->toString())) % "__mantis__mv_ing");
+                        } else {
+                            oss_reaction_mirror << str(boost::format(kRegArgIsoMirrorT) % ra->arg_->toString() % std::to_string(target_reg->width_) % std::to_string(target_reg->instanceCount_) % prefix_str % std::to_string(std::stoi(ra->index2_->toString())) % "__mantis__mv_egr");
+                        }
                     } else {
-                        oss_reaction_mirror << str(boost::format(kRegArgIsoMirrorT) % ra->arg_->toString() % std::to_string(target_reg->width_) % std::to_string(target_reg->instanceCount_) % prefix_str % std::to_string(target_reg->instanceCount_));
+                        if(forIng) {
+                            oss_reaction_mirror << str(boost::format(kRegArgIsoMirrorT) % ra->arg_->toString() % std::to_string(target_reg->width_) % std::to_string(target_reg->instanceCount_) % prefix_str % std::to_string(target_reg->instanceCount_) % "__mantis__mv_ing");
+                        } else {
+                            oss_reaction_mirror << str(boost::format(kRegArgIsoMirrorT) % ra->arg_->toString() % std::to_string(target_reg->width_) % std::to_string(target_reg->instanceCount_) % prefix_str % std::to_string(target_reg->instanceCount_) % "__mantis__mv_egr");
+                        }
                     }
                 } else {
                     PANIC("WARNING: Invalid register argument\n");
@@ -375,7 +385,7 @@ void generateMacroNonMblTable(std::vector<AstNode*> nodeArray, ostringstream& os
 
             // Only applies to tables with reads 
             if(reads) {
-                // Check if constains ternary match (needs priority)
+                // Check if contains ternary match (needs priority)
                 bool with_ternary = false;
                 for (TableReadStmtNode* trs : *reads->list_) {
                     string match_field_name = trs->field_->toString();
@@ -386,28 +396,7 @@ void generateMacroNonMblTable(std::vector<AstNode*> nodeArray, ostringstream& os
                     }
                 }                
 
-                ////////////////////////////////
-                // Delete operation: only need to specify the entry index
-                oss_macro_tmp.str("");
-                oss_replace_tmp.str("");
-                oss_macro_tmp << table_name
-                            << "_del(ARG_INDEX)";
-                oss_replace_tmp << "\t__mantis__status_tmp="
-                                << prefix_str
-                                << table_name
-                                << "_table_delete"
-                                << "(sess_hdl,pipe_mgr_dev_tgt.device_id,user_hdls[ARG_INDEX+"
-                                << std::to_string(kHandlerOffset)
-                                << "]);\\\n"
-                                << kMantisNl;
-                oss_preprocessor << "\n#define "
-                                << oss_macro_tmp.str()
-                                << " "
-                                << oss_replace_tmp.str()
-                                << "\t"
-                                << kErrorCheckStr;   
-
-                // Add and modify operations are attached to a specific action
+                // Operations are attached to a specific action
                 for (TableActionStmtNode* tas : *actions->list_) {
                     string action_name = *tas->name_->word_;
                     oss_replace_tmp.str("");
@@ -509,23 +498,25 @@ void generateMacroNonMblTable(std::vector<AstNode*> nodeArray, ostringstream& os
                                         << kMantisNl;
                     }
                     // Find the ActionNode and add action arguments
-                    // Declare action spec data struct
-                    oss_replace_tmp << "\t"
-                                    << prefix_str
-                                    << action_name
-                                    << "_action_spec_t "
-                                    << "__mantis__add_"
-                                    << action_name
-                                    << "_action_spec_##ARG_INDEX;\\\n"
-                                    << kMantisNl;
+                    int action_arg_index = 0;
                     for (auto tmp_node : nodeArray) {
                         if(typeContains(tmp_node, "ActionNode")) {
                             ActionNode* tmp_action_node = dynamic_cast<ActionNode*>(tmp_node);
                             string tmp_action_name = tmp_action_node->name_->toString();
                             if(tmp_action_name.compare(action_name)==0) {
                                 ActionParamsNode* tmp_action_params = tmp_action_node->params_;
-                                int action_arg_index = 0;
                                 for (ActionParamNode* apn : *tmp_action_params->list_) {
+                                    if (action_arg_index==0) {
+                                        // Declare action spec data struct
+                                        oss_replace_tmp << "\t"
+                                                        << prefix_str
+                                                        << action_name
+                                                        << "_action_spec_t "
+                                                        << "__mantis__add_"
+                                                        << action_name
+                                                        << "_action_spec_##ARG_INDEX;\\\n"
+                                                        << kMantisNl;
+                                    }
                                     oss_macro_tmp << ",ARG_ACTION_"
                                                 << std::to_string(action_arg_index);
                                     oss_replace_tmp << "\t"
@@ -552,12 +543,16 @@ void generateMacroNonMblTable(std::vector<AstNode*> nodeArray, ostringstream& os
                                     << action_name
                                     << "(sess_hdl,pipe_mgr_dev_tgt,&"
                                     << table_name
-                                    << "_match_spec_##ARG_INDEX,priority_##ARG_INDEX,&"
-                                    << "__mantis__add_"
+                                    << "_match_spec_##ARG_INDEX,priority_##ARG_INDEX,";
+                    if(action_arg_index!=0) {
+                        oss_replace_tmp << "&__mantis__add_"
                                     << action_name
-                                    << "_action_spec_##ARG_INDEX,&user_hdls[ARG_INDEX+"
+                                    << "_action_spec_##ARG_INDEX,";
+                    }
+                    oss_replace_tmp << "&hdls["
+                                    << std::to_string(num_max_alts) << "*(2*(ARG_INDEX+"
                                     << std::to_string(kHandlerOffset)
-                                    << "]);\\\n"
+                                    << "))]);\\\n"
                                     << kMantisNl;
 
                     oss_preprocessor << "\n#define "
@@ -568,6 +563,30 @@ void generateMacroNonMblTable(std::vector<AstNode*> nodeArray, ostringstream& os
                                     << kErrorCheckStr;
 
                     ////////////////////////////////
+                    // Delete operation
+                    oss_macro_tmp.str("");
+                    oss_replace_tmp.str("");
+                    oss_macro_tmp << table_name
+                                << "_del_"
+                                << action_name
+                                << "(ARG_INDEX)";
+                    oss_replace_tmp << "\t__mantis__status_tmp="
+                                    << prefix_str
+                                    << table_name
+                                    << "_table_delete"
+                                    << "(sess_hdl,pipe_mgr_dev_tgt.device_id,hdls["
+                                    << std::to_string(num_max_alts) << "*(2*(ARG_INDEX+"
+                                    << std::to_string(kHandlerOffset)
+                                    << "))]);\\\n"
+                                    << kMantisNl;
+                    oss_preprocessor << "\n#define "
+                                    << oss_macro_tmp.str()
+                                    << " "
+                                    << oss_replace_tmp.str()
+                                    << "\t"
+                                    << kErrorCheckStr;  
+
+                    ////////////////////////////////
                     // Modify operation
                     oss_macro_tmp.str("");
                     oss_replace_tmp.str("");
@@ -575,22 +594,24 @@ void generateMacroNonMblTable(std::vector<AstNode*> nodeArray, ostringstream& os
                                 << "_mod_"
                                 << action_name
                                 << "(ARG_INDEX";
-                    oss_replace_tmp << "\t"
-                                    << prefix_str
-                                    << action_name
-                                    << "_action_spec_t "
-                                    << "__mantis__mod_"
-                                    << action_name
-                                    << "_action_spec_##ARG_INDEX;\\\n"
-                                    << kMantisNl;
+                    action_arg_index = 0;
                     for (auto tmp_node : nodeArray) {
                         if(typeContains(tmp_node, "ActionNode")) {
                             ActionNode* tmp_action_node = dynamic_cast<ActionNode*>(tmp_node);
                             string tmp_action_name = tmp_action_node->name_->toString();
                             if(tmp_action_name.compare(action_name)==0) {
                                 ActionParamsNode* tmp_action_params = tmp_action_node->params_;
-                                int action_arg_index = 0;
                                 for (ActionParamNode* apn : *tmp_action_params->list_) {
+                                    if(action_arg_index==0) {
+                                        oss_replace_tmp << "\t"
+                                                        << prefix_str
+                                                        << action_name
+                                                        << "_action_spec_t "
+                                                        << "__mantis__mod_"
+                                                        << action_name
+                                                        << "_action_spec_##ARG_INDEX;\\\n"
+                                                        << kMantisNl;
+                                    }
                                     oss_macro_tmp << ",ARG_ACTION_"
                                                 << std::to_string(action_arg_index);
                                     oss_replace_tmp << "\t"
@@ -602,6 +623,7 @@ void generateMacroNonMblTable(std::vector<AstNode*> nodeArray, ostringstream& os
                                                     << std::to_string(action_arg_index)
                                                     << ";\\\n"
                                                     << kMantisNl;
+                                    action_arg_index += 1;
                                 }
                                 break;
                             }
@@ -614,12 +636,16 @@ void generateMacroNonMblTable(std::vector<AstNode*> nodeArray, ostringstream& os
                                     << table_name
                                     << "_table_modify_with_"
                                     << action_name
-                                    << "(sess_hdl,pipe_mgr_dev_tgt.device_id,user_hdls[ARG_INDEX+"
+                                    << "(sess_hdl,pipe_mgr_dev_tgt.device_id,hdls["
+                                    << std::to_string(num_max_alts) << "*(2*(ARG_INDEX+"
                                     << std::to_string(kHandlerOffset)
-                                    << "],&"
-                                    << "__mantis__mod_"
+                                    << "))]";
+                    if(action_arg_index!=0){
+                        oss_replace_tmp << ",&__mantis__mod_"
                                     << action_name
-                                    << "_action_spec_##ARG_INDEX);\\\n"
+                                    << "_action_spec_##ARG_INDEX";
+                    }
+                    oss_replace_tmp << ");\\\n"
                                     << kMantisNl;
 
                     oss_preprocessor << "\n#define ";
@@ -685,9 +711,10 @@ void generateMacroNonMblTable(std::vector<AstNode*> nodeArray, ostringstream& os
                                         << "_set_default_action_"
                                         << action_name
                                         << "(sess_hdl,pipe_mgr_dev_tgt,"
-                                        << "&user_hdls[ARG_INDEX+"
+                                        << "&hdls["
+                                        << std::to_string(num_max_alts) << "*(2*(ARG_INDEX+"
                                         << std::to_string(kHandlerOffset)
-                                        << "]);\\\n"
+                                        << "))]);\\\n"
                                         << kMantisNl;
                     } else {
                         oss_replace_tmp << "\t__mantis__status_tmp="
@@ -697,9 +724,10 @@ void generateMacroNonMblTable(std::vector<AstNode*> nodeArray, ostringstream& os
                                         << action_name
                                         << "(sess_hdl,pipe_mgr_dev_tgt,&"
                                         << action_name
-                                        << "_action_spec,&user_hdls[ARG_INDEX+"
+                                        << "_action_spec,&hdls["
+                                        << std::to_string(num_max_alts) << "*(2*(ARG_INDEX+"
                                         << std::to_string(kHandlerOffset)
-                                        << "]);\\\n"
+                                        << "))]);\\\n"
                                         << kMantisNl;
                     }
 
@@ -728,6 +756,7 @@ void generateMacroMblTable(std::vector<AstNode*> nodeArray, ostringstream& oss_p
 
     ostringstream oss_macro_tmp;
     ostringstream oss_replace_tmp;
+    // mbl table + mbl field in action is an uncommon usage, currently not supported
     for (auto node : nodeArray) {
         if(typeContains(node, "P4RMalleableTableNode")) {
             TableNode* table = dynamic_cast<P4RMalleableTableNode*>(node)->table_;
@@ -748,67 +777,7 @@ void generateMacroMblTable(std::vector<AstNode*> nodeArray, ostringstream& oss_p
                 }
             }                
 
-            ////////////////////////////////
-            // Delete operation
-            oss_macro_tmp.str("");
-            oss_replace_tmp.str("");
-            oss_macro_tmp << table_name
-                        << "_del(ARG_INDEX)";
-            oss_replace_tmp << "\t__mantis__status_tmp="
-                            << prefix_str
-                            << table_name
-                            << "_table_delete"
-                            << "(sess_hdl,pipe_mgr_dev_tgt.device_id,vv_shallow_hdls[2*(ARG_INDEX+"
-                            << std::to_string(kHandlerOffset);
-            if(findTblInIng(table_name, nodeArray)) {
-                oss_replace_tmp << ")+__mantis__vv_ing]);\\\n"
-                                << kMantisNl
-                                << "\t"
-                                << "__mantis__mbl_updated_ing=1;\\\n"
-                                << kMantisNl; 
-            } else {
-                oss_replace_tmp << ")+__mantis__vv_egr]);\\\n"
-                                << kMantisNl
-                                << "\t"
-                                << "__mantis__mbl_updated_egr=1;\\\n"
-                                << kMantisNl;                 
-            }
-            // Mirror macro, wrap it with conditionals and reset
-            oss_preprocessor << "\n#define "
-                            << "__mantis__mirror_"
-                            << oss_macro_tmp.str()
-                            << " "
-                            << "if(__mantis__indicator_hdls[ARG_INDEX+"
-                            << std::to_string(kHandlerOffset)
-                            << "]==1) {\\\n"
-                            << kMantisNl
-                            << "\t"
-                            << oss_replace_tmp.str()
-                            << "\t"
-                            << kErrorCheckStr
-                            << "\t"
-                            << "__mantis__indicator_hdls[ARG_INDEX+"
-                            << std::to_string(kHandlerOffset)
-                            << "]=0;"
-                            << kMantisNl
-                            << "\t}"
-                            << kMantisNl
-                            << "\n";
-
-            // Set the indicator array
-            oss_replace_tmp << "\t__mantis__indicator_hdls[ARG_INDEX+"
-                            << std::to_string(kHandlerOffset)
-                            << "]=1;\\\n"
-                            << kMantisNl;
-            // User macro during prepare phase
-            oss_preprocessor << "\n#define "
-                            << oss_macro_tmp.str()
-                            << " "
-                            << oss_replace_tmp.str()
-                            << "\t"
-                            << kErrorCheckStr;   
-
-            // Add and modify operations are attached to a specific action
+            // All operations are attached to a specific action
             for (TableActionStmtNode* tas : *actions->list_) {
                 string action_name = *tas->name_->word_;
                 oss_replace_tmp.str("");
@@ -825,14 +794,7 @@ void generateMacroMblTable(std::vector<AstNode*> nodeArray, ostringstream& oss_p
                                 << "_match_spec_t "
                                 << table_name
                                 << "_match_spec_##ARG_INDEX;\\\n"
-                                << kMantisNl;
-                oss_replace_tmp << "\t"
-                                 << prefix_str
-                                 << table_name
-                                 << "_match_spec_t "
-                                 << table_name
-                                 << "_match_spec_##ARG_INDEX;\\\n"
-                                 << kMantisNl;                                      
+                                << kMantisNl;                                   
                 int arg_index = 0;
                 for (TableReadStmtNode* trs : *reads->list_) {
                     string match_field_name = trs->field_->toString();
@@ -956,15 +918,7 @@ void generateMacroMblTable(std::vector<AstNode*> nodeArray, ostringstream& oss_p
                                     << kMantisNl;
                 }
                 // Find the ActionNode and add action arguments
-                // Declare action spec data struct
-                oss_replace_tmp << "\t"
-                                << prefix_str
-                                << action_name
-                                << "_action_spec_t "
-                                << "__mantis__add_"
-                                << action_name
-                                << "_action_spec_##ARG_INDEX;\\\n"
-                                << kMantisNl;
+                int action_arg_index = 0;
                 for (auto tmp_node : nodeArray) {
                     // Currently addressing action without mbl fields
                     if(typeContains(tmp_node, "ActionNode")) {
@@ -972,8 +926,17 @@ void generateMacroMblTable(std::vector<AstNode*> nodeArray, ostringstream& oss_p
                         string tmp_action_name = tmp_action_node->name_->toString();
                         if(tmp_action_name.compare(action_name)==0) {
                             ActionParamsNode* tmp_action_params = tmp_action_node->params_;
-                            int action_arg_index = 0;
                             for (ActionParamNode* apn : *tmp_action_params->list_) {
+                                if(action_arg_index==0) {
+                                    oss_replace_tmp << "\t"
+                                                    << prefix_str
+                                                    << action_name
+                                                    << "_action_spec_t "
+                                                    << "__mantis__add_"
+                                                    << action_name
+                                                    << "_action_spec_##ARG_INDEX;\\\n"
+                                                    << kMantisNl;
+                                }
                                 oss_macro_tmp << ",ARG_ACTION_"
                                             << std::to_string(action_arg_index);
                                 oss_replace_tmp << "\t"
@@ -1000,13 +963,17 @@ void generateMacroMblTable(std::vector<AstNode*> nodeArray, ostringstream& oss_p
                                 << action_name
                                 << "(sess_hdl,pipe_mgr_dev_tgt,&"
                                 << table_name
-                                << "_match_spec_##ARG_INDEX,priority_##ARG_INDEX,&"
-                                << "__mantis__add_"
+                                << "_match_spec_##ARG_INDEX,priority_##ARG_INDEX,";
+                if(action_arg_index != 0) {
+                    oss_replace_tmp  << "&__mantis__add_"
                                 << action_name
-                                << "_action_spec_##ARG_INDEX,&vv_shallow_hdls[2*(ARG_INDEX+"
+                                << "_action_spec_##ARG_INDEX,";
+                }
+                oss_replace_tmp << "&hdls["
+                                << std::to_string(num_max_alts) << "*(2*(ARG_INDEX+"
                                 << std::to_string(kHandlerOffset);
                 if(findTblInIng(table_name, nodeArray)) {
-                    oss_replace_tmp << ")+__mantis__vv_ing]);\\\n"
+                    oss_replace_tmp << ")+__mantis__vv_ing)]);\\\n"
                                     << kMantisNl
                                     << "\t"
                                     << "__mantis__mbl_updated_ing=1;\\\n"
@@ -1055,6 +1022,69 @@ void generateMacroMblTable(std::vector<AstNode*> nodeArray, ostringstream& oss_p
                                 << kErrorCheckStr;  
 
                 ////////////////////////////////
+                // Delete operation
+                oss_macro_tmp.str("");
+                oss_replace_tmp.str("");
+                oss_macro_tmp << table_name
+                            << "_del_"
+                            << action_name
+                            << "(ARG_INDEX)";
+                oss_replace_tmp << "\t__mantis__status_tmp="
+                                << prefix_str
+                                << table_name
+                                << "_table_delete"
+                                << "(sess_hdl,pipe_mgr_dev_tgt.device_id,hdls["
+                                << std::to_string(num_max_alts) << "*(2*(ARG_INDEX+"
+                                << std::to_string(kHandlerOffset);
+                if(findTblInIng(table_name, nodeArray)) {
+                    oss_replace_tmp << ")+__mantis__vv_ing)]);\\\n"
+                                    << kMantisNl
+                                    << "\t"
+                                    << "__mantis__mbl_updated_ing=1;\\\n"
+                                    << kMantisNl; 
+                } else {
+                    oss_replace_tmp << ")+__mantis__vv_egr]);\\\n"
+                                    << kMantisNl
+                                    << "\t"
+                                    << "__mantis__mbl_updated_egr=1;\\\n"
+                                    << kMantisNl;                 
+                }
+                // Mirror macro, wrap it with conditionals and reset
+                oss_preprocessor << "\n#define "
+                                << "__mantis__mirror_"
+                                << oss_macro_tmp.str()
+                                << " "
+                                << "if(__mantis__indicator_hdls[ARG_INDEX+"
+                                << std::to_string(kHandlerOffset)
+                                << "]==1) {\\\n"
+                                << kMantisNl
+                                << "\t"
+                                << oss_replace_tmp.str()
+                                << "\t"
+                                << kErrorCheckStr
+                                << "\t"
+                                << "__mantis__indicator_hdls[ARG_INDEX+"
+                                << std::to_string(kHandlerOffset)
+                                << "]=0;"
+                                << kMantisNl
+                                << "\t}"
+                                << kMantisNl
+                                << "\n";
+
+                // Set the indicator array
+                oss_replace_tmp << "\t__mantis__indicator_hdls[ARG_INDEX+"
+                                << std::to_string(kHandlerOffset)
+                                << "]=1;\\\n"
+                                << kMantisNl;
+                // User macro during prepare phase
+                oss_preprocessor << "\n#define "
+                                << oss_macro_tmp.str()
+                                << " "
+                                << oss_replace_tmp.str()
+                                << "\t"
+                                << kErrorCheckStr;  
+
+                ////////////////////////////////
                 // Modify operation
                 oss_macro_tmp.str("");
                 oss_replace_tmp.str("");
@@ -1062,22 +1092,24 @@ void generateMacroMblTable(std::vector<AstNode*> nodeArray, ostringstream& oss_p
                             << "_mod_"
                             << action_name
                             << "(ARG_INDEX";
-                oss_replace_tmp << "\t"
-                                 << prefix_str
-                                 << action_name
-                                 << "_action_spec_t "
-                                 << "__mantis__mod_"
-                                 << action_name
-                                 << "_action_spec_##ARG_INDEX;\\\n"
-                                 << kMantisNl;                                
+                action_arg_index = 0;                               
                 for (auto tmp_node : nodeArray) {
                     if(typeContains(tmp_node, "ActionNode")) {
                         ActionNode* tmp_action_node = dynamic_cast<ActionNode*>(tmp_node);
                         string tmp_action_name = tmp_action_node->name_->toString();
                         if(tmp_action_name.compare(action_name)==0) {
                             ActionParamsNode* tmp_action_params = tmp_action_node->params_;
-                            int action_arg_index = 0;
                             for (ActionParamNode* apn : *tmp_action_params->list_) {
+                                if(action_arg_index==0) {
+                                    oss_replace_tmp << "\t"
+                                         << prefix_str
+                                         << action_name
+                                         << "_action_spec_t "
+                                         << "__mantis__mod_"
+                                         << action_name
+                                         << "_action_spec_##ARG_INDEX;\\\n"
+                                         << kMantisNl; 
+                                }
                                 oss_macro_tmp << ",ARG_ACTION_"
                                             << std::to_string(action_arg_index);
                                 oss_replace_tmp << "\t"
@@ -1089,6 +1121,7 @@ void generateMacroMblTable(std::vector<AstNode*> nodeArray, ostringstream& oss_p
                                                 << std::to_string(action_arg_index)
                                                 << ";\\\n"
                                                 << kMantisNl;
+                                action_arg_index += 1;
                             }
                             break;
                         }
@@ -1101,22 +1134,29 @@ void generateMacroMblTable(std::vector<AstNode*> nodeArray, ostringstream& oss_p
                                 << table_name
                                 << "_table_modify_with_"
                                 << action_name
-                                << "(sess_hdl,pipe_mgr_dev_tgt.device_id,vv_shallow_hdls[2*(ARG_INDEX+"
+                                << "(sess_hdl,pipe_mgr_dev_tgt.device_id,hdls["
+                                << std::to_string(num_max_alts) << "*(2*(ARG_INDEX+"
                                 << std::to_string(kHandlerOffset);
                 if(findTblInIng(table_name, nodeArray)) {
-                    oss_replace_tmp << ")+__mantis__vv_ing],&"
-                                    << "__mantis__mod_"
+                    oss_replace_tmp << ")+__mantis__vv_ing)]";
+                    if (action_arg_index != 0) {
+                        oss_replace_tmp << ",&__mantis__mod_"
                                     << action_name
-                                    << "_action_spec_##ARG_INDEX);\\\n"
+                                    << "_action_spec_##ARG_INDEX";
+                    }
+                    oss_replace_tmp << ");\\\n"
                                     << kMantisNl
                                     << "\t"
                                     << "__mantis__mbl_updated_ing=1;\\\n"
                                     << kMantisNl;
                 } else {
-                    oss_replace_tmp << ")+__mantis__vv_egr],&"
-                                    << "__mantis__mod_"
+                    oss_replace_tmp << ")+__mantis__vv_egr]";
+                    if (action_arg_index != 0) {
+                        oss_replace_tmp << ",&__mantis__mod_"
                                     << action_name
-                                    << "_action_spec_##ARG_INDEX);\\\n"
+                                    << "_action_spec_##ARG_INDEX";
+                    }
+                    oss_replace_tmp << ");\\\n"
                                     << kMantisNl
                                     << "\t"
                                     << "__mantis__mbl_updated_egr=1;\\\n"
@@ -1378,6 +1418,7 @@ void generateMacroInitMblsForIng(std::vector<AstNode*> nodeArray, unordered_map<
                                         << p4rInitActionName
                                         << ".action_p__"
                                         << var_name
+                                        << "__alt"
                                         << "=__mantis__"
                                         << var_name
                                         << ";\\\n"
@@ -1386,6 +1427,7 @@ void generateMacroInitMblsForIng(std::vector<AstNode*> nodeArray, unordered_map<
                                         << p4rInitActionName
                                         << ".action_p__"
                                         << var_name
+                                        << "__alt"
                                         << "=__mantis__"
                                         << var_name
                                         << ";\\\n"
@@ -1487,9 +1529,10 @@ void generateMacroInitMblsForIng(std::vector<AstNode*> nodeArray, unordered_map<
                                     << p4rInitActionName
                                     << ", ";
     }
-    oss_replace_mantis_add_vars << "&user_hdls["
+    oss_replace_mantis_add_vars << "&hdls["
+                                << std::to_string(num_max_alts) << "*(2*"
                                 << std::to_string(initEntryHandlerIndex)
-                                << "]);\\\n"
+                                << ")]);\\\n"    
                                 << kMantisNl;
     // Define the macro mantis_add_vars     
     if(forIng) {
@@ -1524,9 +1567,10 @@ void generateMacroInitMblsForIng(std::vector<AstNode*> nodeArray, unordered_map<
                                     << p4rInitActionName
                                     << ", ";
     }                                
-    oss_replace_mantis_mod_vars << "&user_hdls["
+    oss_replace_mantis_mod_vars << "&hdls["
+                                << std::to_string(num_max_alts) << "*(2*"
                                 << std::to_string(initEntryHandlerIndex)
-                                << "]);\\\n"
+                                << ")]);\\\n"
                                 << kMantisNl;
     if(forIng) {
         oss_preprocessor << "\n#define "
@@ -1543,6 +1587,37 @@ void generateMacroInitMblsForIng(std::vector<AstNode*> nodeArray, unordered_map<
                          << kErrorCheckStr
                          << " }\n";
     }                             
+}
+
+void generateHdlPool(std::vector<AstNode*> nodeArray, ostringstream& oss_mbl_init, int ing_iso_opt, int egr_iso_opt) {
+    // Max number of alts
+    for (auto n : nodeArray) {
+        if (typeContains(n, "P4RMalleableFieldNode")) {
+            auto v = dynamic_cast<P4RMalleableFieldNode*>(n);
+
+            string var_name = *v->name_->word_;
+
+            int num_alt = 0;
+
+            for (FieldNode* tmp_alt : *v->varAlts_->fields_->list_) {
+                num_alt += 1;
+            }
+            PRINT_VERBOSE("Number of alts for %s: %d \n", var_name.c_str(), num_alt);
+            if(num_alt > num_max_alts) {
+                num_max_alts = num_alt;
+            }            
+       }
+    }
+
+    if(((unsigned int)ing_iso_opt) & 0b10 || ((unsigned int)egr_iso_opt) & 0b10) {
+        oss_mbl_init << "  bool __mantis__indicator_hdls"
+                     << "[" << std::to_string(kNumUserHdls) << "];\n";
+    }    
+    // Malloc handler array over linked list for random access, memoization cache omitted
+    // oss_mbl_init << "  hdls = (uint32_t *)calloc("
+    //              << kNumUserHdls << "*2*" << std::to_string(num_max_alts)
+    //              << ", sizeof(uint32_t)"
+    //              << ");\n\n";
 }
 
 void generatePrologueEnd(std::vector<AstNode*> nodeArray, ostringstream& oss_init_end, int ing_iso_opt, int egr_iso_opt) {

@@ -55,7 +55,7 @@ const char* const kErrorCheckStr = "if(__mantis__status_tmp!=0) {return false;}_
 static int kHandlerOffset = 2;
 static int kIngInitEntryHandlerIndex = 0;
 static int kEgrInitEntryHandlerIndex = 1;
-// Consistent with the agent malloc size of user_hdls
+// Number of concurrent user handlers
 static int kNumUserHdls = 5000;
 
 // %1%: reg width
@@ -103,34 +103,35 @@ R"(
 // %3%: reg arg size
 // %4%: prefix str
 // %5%: number of items to read
+// %6%: mv bit var
 const char * const kRegArgIsoMirrorT =
 R"(
   // Mirror %1%
   uint%2%_t %1%[%3%];
   static uint32_t %1%__tstamp__P4Rreplicas0[%3%];
   static uint32_t %1%__tstamp__P4Rreplicas1[%3%];
-  if(__mantis__mv==0) {
-    %4%%1%_value_t __mantis__values_%1%__P4Rreplicas0[4*%3%];
+  if(%6%==0) {
+    %4%%1%__P4Rreplicas0_value_t __mantis__values_%1%__P4Rreplicas0[4*%3%];
     __mantis__status_tmp = %4%register_range_read_%1%__P4Rreplicas0(sess_hdl, pipe_mgr_dev_tgt, 0, %5%, __mantis__reg_flags, &__mantis__num_actually_read, __mantis__values_%1%__P4Rreplicas0, &__mantis__value_count);
     if(__mantis__status_tmp!=0) {
       return false;
     }
     for (__mantis__i=0; __mantis__i < %5%; __mantis__i++) {
-      if(__mantis__values_%1%__P4Rreplicas0[1+__mantis__i*2].hi > uint32_t %1%__tstamp__P4Rreplicas0[__mantis__i]) {
-        %1%[__mantis__i] = __mantis__values_%1%__P4Rreplicas0[1+__mantis__i*2].lo;
-        %1%__tstamp__P4Rreplicas0[__mantis__i] = __mantis__values_%1%__P4Rreplicas0[1+__mantis__i*2].hi;
+      if(__mantis__values_%1%__P4Rreplicas0[1+__mantis__i*2].f0 > %1%__tstamp__P4Rreplicas0[__mantis__i]) {
+        %1%[__mantis__i] = __mantis__values_%1%__P4Rreplicas0[1+__mantis__i*2].f1;
+        %1%__tstamp__P4Rreplicas0[__mantis__i] = __mantis__values_%1%__P4Rreplicas0[1+__mantis__i*2].f0;
       }
     }
   } else {
-    %4%%1%_value_t __mantis__values_%1%__P4Rreplicas1[4*%3%];
+    %4%%1%__P4Rreplicas0_value_t __mantis__values_%1%__P4Rreplicas1[4*%3%];
     __mantis__status_tmp = %4%register_range_read_%1%__P4Rreplicas1(sess_hdl, pipe_mgr_dev_tgt, 0, %5%, __mantis__reg_flags, &__mantis__num_actually_read, __mantis__values_%1%__P4Rreplicas1, &__mantis__value_count);
     if(__mantis__status_tmp!=0) {
       return false;
     }
     for (__mantis__i=0; __mantis__i < %5%; __mantis__i++) {
-      if(__mantis__values_%1%__P4Rreplicas1[1+__mantis__i*2].hi > uint32_t %1%__tstamp__P4Rreplicas1[__mantis__i]) {
-        %1%[__mantis__i] = __mantis__values_%1%__P4Rreplicas1[1+__mantis__i*2].lo;
-        %1%__tstamp__P4Rreplicas1[__mantis__i] = __mantis__values_%1%__P4Rreplicas1[1+__mantis__i*2].hi;
+      if(__mantis__values_%1%__P4Rreplicas1[1+__mantis__i*2].f0 > %1%__tstamp__P4Rreplicas1[__mantis__i]) {
+        %1%[__mantis__i] = __mantis__values_%1%__P4Rreplicas1[1+__mantis__i*2].f1;
+        %1%__tstamp__P4Rreplicas1[__mantis__i] = __mantis__values_%1%__P4Rreplicas1[1+__mantis__i*2].f0;
       }		
     }
   }
@@ -142,7 +143,7 @@ R"(
 const char * const kIngFieldArgPollT = 
 R"(
   uint%1%_t __mantis__values_riSetArgs_%2%[4];
-  __mantis__status_tmp = %3%regiser_read___riSetArgs%2%(sess_hdl, pipe_mgr_dev_tgt, __mantis__mv, __mantis__reg_flags, __mantis__values_riSetArgs_%2%, &__mantis__value_count);
+  __mantis__status_tmp = %3%register_read___riSetArgs%2%(sess_hdl, pipe_mgr_dev_tgt, __mantis__mv_ing, __mantis__reg_flags, __mantis__values_riSetArgs_%2%, &__mantis__value_count);
   if(__mantis__status_tmp!=0) {
     return false;
   }
@@ -151,7 +152,7 @@ R"(
 const char * const kEgrFieldArgPollT = 
 R"(
   uint%1%_t __mantis__values_reSetArgs_%2%[4];
-  __mantis__status_tmp = %3%regiser_read___reSetArgs%2%(sess_hdl, pipe_mgr_dev_tgt, __mantis__mv, __mantis__reg_flags, __mantis__values_reSetArgs_%2%, &__mantis__value_count);
+  __mantis__status_tmp = %3%register_read___reSetArgs%2%(sess_hdl, pipe_mgr_dev_tgt, __mantis__mv_egr, __mantis__reg_flags, __mantis__values_reSetArgs_%2%, &__mantis__value_count);
   if(__mantis__status_tmp!=0) {
     return false;
   }
@@ -159,7 +160,7 @@ R"(
 
 const char * const kPrologueT = 
 R"(
-bool pd_prologue(uint32_t sess_hdl, dev_target_t pipe_mgr_dev_tgt, uint32_t* user_hdls, uint32_t* vv_shallow_hdls) {
+bool pd_prologue(uint32_t sess_hdl, dev_target_t pipe_mgr_dev_tgt, uint32_t* hdls) {
   uint32_t __mantis__status_tmp;
 
 %1%
@@ -174,7 +175,7 @@ bool pd_prologue(uint32_t sess_hdl, dev_target_t pipe_mgr_dev_tgt, uint32_t* use
 
 const char * const kDialogueT = 
 R"(
-bool pd_dialogue(uint32_t sess_hdl, dev_target_t pipe_mgr_dev_tgt, uint32_t* user_hdls, uint32_t* vv_shallow_hdls) {
+bool pd_dialogue(uint32_t sess_hdl, dev_target_t pipe_mgr_dev_tgt, uint32_t* hdls) {
   uint32_t __mantis__status_tmp;
 
 %1%

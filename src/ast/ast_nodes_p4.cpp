@@ -46,11 +46,22 @@ BodyWordNode* BodyWordNode::deepCopy() {
 }
 
 string BodyWordNode::toString() {
-    ostringstream oss;
-    oss << string("  ")*indent_ << contents_->toString();
+    ostringstream oss; 
+    if (wordType_ == WordType::INTEGER || wordType_ == WordType::SPECIAL) {
+        oss << contents_->toString();
+    } else if (dynamic_cast<BodyNode*>(parent_) != NULL && dynamic_cast<BodyNode*>(parent_)->bodyOuter_ != NULL && 
+        dynamic_cast<BodyNode*>(parent_)->bodyOuter_->str_ != NULL && dynamic_cast<BodyNode*>(parent_)->bodyOuter_->str_->wordType_ == WordType::SPECIAL &&
+        dynamic_cast<BodyNode*>(parent_)->bodyOuter_->str_->contents_->toString() != ";" ) {
+        oss << contents_->toString();
+    } else if (dynamic_cast<BodyNode*>(parent_) != NULL && dynamic_cast<BodyNode*>(parent_)->bodyOuter_ != NULL && 
+        dynamic_cast<BodyNode*>(parent_)->bodyOuter_->str_ != NULL && dynamic_cast<BodyNode*>(parent_)->bodyOuter_->str_->wordType_ == WordType::INTEGER) {
+        oss << contents_->toString();
+    } else {
+        oss << string("  ")*indent_ << contents_->toString();
+    }
     if (contents_->toString() == ";") {
         oss << "\n";
-    }
+    }    
     return oss.str();
 }
 

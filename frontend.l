@@ -64,6 +64,7 @@
 "$"         {return DOLLAR;}
 "["         {return L_BRACKET;}
 "]"         {return R_BRACKET;}
+"/"         {return SLASH;}
 
     /* Reserved words - variables */
 "malleable"  {return P4R_MALLEABLE;}
@@ -108,8 +109,7 @@
     return INTEGER; 
 }
 
-    /* Important to address flexible spacing issues around these symbols */
-[^{}()\[\]:;,\.$ \t\n]+ {
+[^{}\/()\[\]:;,\.$ \t\n]+ {
     yylval.sval = strdup(yytext);
     return STRING;
 }
