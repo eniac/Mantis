@@ -70,6 +70,6 @@ sudo -E ./run.sh dos_mantis ../out/p4r.c
 
 ### Further Questions
 
-A practical [tutorial](https://github.com/eniac/Mantis/tutorial.md) is attached, for more details, please refer to the [paper](https://dl.acm.org/doi/10.1145/3387514.3405870).
+A practical [tutorial](https://github.com/eniac/Mantis/blob/master/tutorial.md) is attached, for more details, please refer to the paper [Mantis: Reactive Programmable Switches](https://dl.acm.org/doi/10.1145/3387514.3405870) (SIGCOMM '20).
 
 Feel free to post [issues](https://github.com/eniac/Mantis/issues) if any question arises.

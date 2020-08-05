@@ -62,4 +62,4 @@ rm ${output_include_fn} ${output_c_fn}
 { echo "==============Compile output p4 to tofino target with p4c=============="; } 2> /dev/null
 output_namebase=$(basename ${output_base})
 abs_output_p4_path=$(cd ${output_path}; pwd)"/"${output_namebase}"_mantis.p4"
-./p4_14_compile.sh ${abs_output_p4_path}
+./util/p4_14_compile.sh ${abs_output_p4_path}

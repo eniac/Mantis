@@ -1,0 +1,13 @@
+set 0 burst 1
+set 0 rate 20
+set 0 size 550 
+enable 0 range
+page range
+range 0 src ip 10.2.2.0 10.2.2.0 10.2.3.0 0.0.0.1
+range 0 dst ip 10.1.1.2 10.1.1.2 10.1.1.2 0.0.0.1
+range 0 dst port 30000 30000 40000 1
+range 0 src port 30000 30000 40000 1
+range 0 proto tcp
+range 0 size 550 550 550 1
+stop 0
+start 0

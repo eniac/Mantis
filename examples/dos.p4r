@@ -186,7 +186,7 @@ table ti_ipv4_forwarding {
 }
 
 @pragma stage 0
-table ti_blocklist {
+malleable table ti_blocklist {
   reads {
     ipv4.srcAddr : ternary;
   }
@@ -266,8 +266,6 @@ reaction my_reaction(reg ri_sample){
   // Packet count diff
   tmp_count = ri_sample[0].f1 - prev_count;
 
-  int blocklist_hdl_index = 0;
-
   if(tmp_count>0) {
     for(search_i=to_append_id-1; search_i>=0; search_i--) {
       if(src_ips[search_i]==ri_sample[0].f0) {
@@ -296,8 +294,7 @@ reaction my_reaction(reg ri_sample){
           if((curr_ts-first_seen_time[search_i])>=SPURIOUS_THRESHOLD_US) {
             printf("Block: %X, latency: %lu us\n", src_ips[search_i], curr_ts-first_seen_time[search_i]);
             
-            ti_blocklist_add_ai_drop_ipv4(blocklist_hdl_index, src_ips[search_i], 0xffffffff, 2);
-            blocklist_hdl_index += 1;
+            ti_blocklist_add_ai_drop_ipv4(10, src_ips[search_i], 0xffffffff, 2);
 
             gettimeofday(&tp, NULL);
             curr_ts = tp.tv_sec*1000000 + tp.tv_usec;              
