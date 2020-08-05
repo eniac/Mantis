@@ -1,3 +1,5 @@
+# Example scripts for program independent set up
+
 import argparse
 import importlib
 import json
@@ -33,6 +35,7 @@ pal = pal_i.Client(pal_protocol)
 
 try:
 
+    # Example port configuration
     pal.pal_port_add(0, 144, pal_port_speed_t.BF_SPEED_10G, pal_fec_type_t.BF_FEC_TYP_NONE)
     pal.pal_port_enable(0, 144)
 
@@ -48,5 +51,6 @@ try:
     pal.pal_port_add(0, 163, pal_port_speed_t.BF_SPEED_10G, pal_fec_type_t.BF_FEC_TYP_NONE)
     pal.pal_port_enable(0, 163)          
     print("Port configuration suceeds")
+
 except:
     print("Port configuration fails")

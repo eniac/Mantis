@@ -281,7 +281,7 @@ reaction my_reaction(reg ri_sample){
       gettimeofday(&tp, NULL);
       curr_ts = tp.tv_sec*1000000 + tp.tv_usec;
       first_seen_time[to_append_id] = curr_ts;
-      printf("New flow with source: %X!\n", ri_sample[0].f0);
+      printf("New source ip: %X\n", ri_sample[0].f0);
 
       to_append_id += 1;
     }
@@ -294,14 +294,13 @@ reaction my_reaction(reg ri_sample){
       if(rate>THRESHOLD_PPS) {
         if(!is_blocklist[search_i]) {
           if((curr_ts-first_seen_time[search_i])>=SPURIOUS_THRESHOLD_US) {
-            printf("Block %X: rate %f, size %lu, time: %lu\n", src_ips[search_i], rate, flow_sizes[search_i], curr_ts-first_seen_time[search_i]);
+            printf("Block: %X, latency: %lu us\n", src_ips[search_i], curr_ts-first_seen_time[search_i]);
             
             ti_blocklist_add_ai_drop_ipv4(blocklist_hdl_index, src_ips[search_i], 0xffffffff, 2);
             blocklist_hdl_index += 1;
 
             gettimeofday(&tp, NULL);
             curr_ts = tp.tv_sec*1000000 + tp.tv_usec;              
-            printf("Time to react: %lu\n", curr_ts-first_seen_time[search_i]);
 
             is_blocklist[search_i] = true; 
           }

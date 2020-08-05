@@ -1,8 +1,7 @@
-## P4R frontend
+## Mantis
 
 ### Description
 
-P4R language is a simple extension to P4 language to express fine-grained, serializable, and switch-local reactive behaviors.
 P4R frontend is a lightweight flex-bison based compiler that converts a P4R program into two files:
 
 1. a tofino-compatible P4-14 program targeting Wedge100BF-32X Tofino switch: `<p4r_prog_name>_mantis.p4`
@@ -37,7 +36,7 @@ Point `SDE` variable to the SDE root directory, e.g.,
 export SDE="/home/mantis/bf-sde-9.0.0"
 ```
 
-##### Frontend
+#### Frontend
 
 `compile_p4r.sh` wraps the usage of frontend: `./compile_p4r.sh [-vv] [-o output_dir] input_file`
 
@@ -54,7 +53,7 @@ sudo -E ./compile_p4r.sh -vv examples/dos.p4r
 
 `compile_p4r.sh` also links the compilation of the malleable P4 code at the end, one could comment out the last section when a tofino switch/similator is not available.
 
-##### Agent
+#### Agent
 
 * `launch.sh` wraps the launch of a Mantis controller instance: `sudo -E ./launch.sh <p4 prog name>`
 * `run.sh` wraps the generation of the shared object and the activation of reaction loops: `sudo -E ./run.sh <p4 prog name> <p4r.c path>`
@@ -62,14 +61,15 @@ sudo -E ./compile_p4r.sh -vv examples/dos.p4r
 E.g., for `dos.p4r` example
 
 ```
-# One terminal
+# Set SDE variable for each session
+# Terminal 1
 sudo -E ./launch.sh dos_mantis
-# Another terminal, AFTER the completion of ./launch.sh warming up, around 10s
+# Terminal 2, AFTER the completion of ./launch.sh warming up, around 10s
 sudo -E ./run.sh dos_mantis ../out/p4r.c
 ```
 
 ### Further Questions
 
-For more details, please refer to the [paper](https://dl.acm.org/doi/10.1145/3387514.3405870).
+A practical [tutorial](https://github.com/eniac/Mantis/tutorial.md) is attached, for more details, please refer to the [paper](https://dl.acm.org/doi/10.1145/3387514.3405870).
 
 Feel free to post [issues](https://github.com/eniac/Mantis/issues) if any question arises.

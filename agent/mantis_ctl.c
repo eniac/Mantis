@@ -1,5 +1,4 @@
 #define _GNU_SOURCE
-#include <getopt.h>
 #include <dlfcn.h> 
 #include <pipe_mgr/pipe_mgr_intf.h>
 #include <unistd.h>
@@ -93,7 +92,9 @@ int main(int argc, char **argv) {
   }
   switchd_ctx->install_dir = argv[1];
   switchd_ctx->conf_file = argv[2];
-  switchd_ctx->running_in_background = true;
+  // Set to false in case one prefers interactive commands
+  switchd_ctx->running_in_background = false;
+
   bf_switchd_lib_init(switchd_ctx);
 
   printf("Trigger USR1 for the control loop... [PID: %ld]\n", (long)getpid());
