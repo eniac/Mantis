@@ -18,9 +18,9 @@ extern "C" {
 
 #define MAX_HDL_SIZE 10000
 
-static bool sleep_before = true;
-static bool loop_flag = false;
-static void sigusr1_handler(int signum) {
+bool sleep_before = true;
+bool loop_flag = false;
+void sigusr1_handler(int signum) {
   printf("Signal %d\n", signum);
   sleep_before = false;
   if(loop_flag) {
@@ -65,39 +65,14 @@ void load_p4r(){
 }
 
 bool redefine_loop = false;
-static void sigusr2_handler(int signum) {
+void sigusr2_handler(int signum) {
   printf("Signal %d\n", signum);
   redefine_loop = true;
 }
 
-int main(int argc, char **argv) {
+void* mantis_thd_func() {
 
-  struct sigaction sa_usr1;
-  sa_usr1.sa_handler=&sigusr1_handler;
-  sa_usr1.sa_flags=0;
-  if(sigaction(SIGUSR1, &sa_usr1, NULL)!=0) {
-    exit(1);
-  }
-  struct sigaction sa_usr2;
-  sa_usr2.sa_handler=&sigusr2_handler;
-  sa_usr2.sa_flags=0;
-  if(sigaction(SIGUSR2, &sa_usr2, NULL)!=0) {
-    exit(1);
-  }
-
-  bf_switchd_context_t *switchd_ctx;
-  if ((switchd_ctx = (bf_switchd_context_t *) calloc(1, sizeof(bf_switchd_context_t))) == NULL) {
-    printf("Cannot Allocate switchd context\n");
-    exit(1);
-  }
-  switchd_ctx->install_dir = argv[1];
-  switchd_ctx->conf_file = argv[2];
-  // Set to false in case one prefers interactive commands
-  switchd_ctx->running_in_background = false;
-
-  bf_switchd_lib_init(switchd_ctx);
-
-  printf("Trigger USR1 for the control loop... [PID: %ld]\n", (long)getpid());
+  printf("Launch mantis thread... [PID: %ld]\n", (long)getpid());
   printf("---------------------\n");
 
   while(sleep_before) {
@@ -149,5 +124,41 @@ int main(int argc, char **argv) {
   }
 
   if (handlers) free(handlers);
+
+  return 0;
+}
+
+int main(int argc, char **argv) {
+
+  struct sigaction sa_usr1;
+  sa_usr1.sa_handler=&sigusr1_handler;
+  sa_usr1.sa_flags=0;
+  if(sigaction(SIGUSR1, &sa_usr1, NULL)!=0) {
+    exit(1);
+  }
+  struct sigaction sa_usr2;
+  sa_usr2.sa_handler=&sigusr2_handler;
+  sa_usr2.sa_flags=0;
+  if(sigaction(SIGUSR2, &sa_usr2, NULL)!=0) {
+    exit(1);
+  }
+
+  bf_switchd_context_t *switchd_ctx;
+  if ((switchd_ctx = (bf_switchd_context_t *) calloc(1, sizeof(bf_switchd_context_t))) == NULL) {
+    printf("Cannot Allocate switchd context\n");
+    exit(1);
+  }
+  switchd_ctx->install_dir = argv[1];
+  switchd_ctx->conf_file = argv[2];
+  // Set to false in case one prefers interactive commands
+  switchd_ctx->running_in_background = false;
+
+  bf_switchd_lib_init(switchd_ctx);
+
+  pthread_t mantis_thd;
+  pthread_create(&mantis_thd, NULL, &mantis_thd_func, NULL);
+
+  pthread_join(mantis_thd, NULL);
+
   return 0;
 }

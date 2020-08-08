@@ -1,6 +1,12 @@
 **/.DS_Store
+**/.vscode
 frontend.tab.c
 frontend.tab.h
 frontend
 lex.yy.c
 out
+agent/context
+**/*.o
+**/zlog-cfg-cur
+**/bf_drivers.log*
+agent/mantis_ctl
